@@ -42,7 +42,11 @@ Grab a release from the releases page, extract the binary, copy it to somewhere 
 
 Something like this will do it if you have write access to /usr/local/bin
 
+Mac:
 `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.0/lup_0.1.0_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+
+Linux:
+`curl -sL https://github.com/udkyo/lup/releases/download/v0.1.0/lup_0.1.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
 ## Compiling
 
