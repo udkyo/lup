@@ -42,11 +42,9 @@ Grab a release from the releases page, extract the binary, copy it to somewhere 
 
 Something like this will do it if you have write access to /usr/local/bin
 
-Mac:
-`curl -sL https://github.com/udkyo/lup/releases/download/v0.1.0/lup_0.1.0_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.1/lup_0.1.1_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
-Linux:
-`curl -sL https://github.com/udkyo/lup/releases/download/v0.1.0/lup_0.1.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.1/lup_0.1.1_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
 ## Compiling
 
@@ -68,17 +66,17 @@ And single-slashes when enclosed in single quotes:
 
 You'll find you need to escape quotes in certain circumstances - echo "hello world" comes through in os.Args as ["echo", "hello world"] so unless some kind soul can tell me something I've missed, lup has no visibility of the original quotes. Any spaced argument gets dropped into double-quotes by default. So when you have double-quotes nested in single quotes, or single quotes freestanding and empty, escape them with a backslash.
 
-To reuse a term (think: backrefs) you can use ampersands containing an integer reference enclosed in forward slashes, but the reference cannot come before the group it refers to.
+To reuse a term (think: backrefs) you can use ampersands containing a single integer reference, these increment from 1, and the reference cannot come before the group it refers to.
 
 Good:
-`lup echo "@hello,goodbye@ @world,friend@ (@/1/@)"`
+`lup echo "@hello,goodbye@ @world,friend@ (@1@)"`
 
 Bad:
-`lup echo "@/2/@ @hello,goodbye@ @world,friend@"`
+`lup echo "@2@ @hello,goodbye@ @world,friend@"`
 
 Lup won't straddle pipes or redirects, so if you are referencing terms on either side of those, it may be simplest to just pass the command as a string to a new shell as in the following example. 
 
-`lup sh -c "echo @1,2,3,4,5,6,7,8,9,10@ > /tmp/@/1/@"`
+`lup sh -c "echo @1,2,3,4,5,6,7,8,9,10@ > /tmp/@1@"`
 
 Finally, when piping a command's output to lup, it will be captured and piped to each command lup generates and runs.
 
@@ -86,13 +84,13 @@ The following will generate 10 ssh key pairs, and push the 10 distinct public ke
 
 ```
 lup ssh-keygen -b 4096 -t rsa -f /opt/ssh/keys/training@1,2,3,4,5,6,7,8,9,10@ -q -N ''
-lup sh -c "cat /opt/ssh/keys/training@1,2,3,4,5,6,7,8,9,10@.pub | ssh admin\\@train@1,2,3,4,5@.test 'cat >> ~training@/1/@/.ssh/authorized_keys'"
+lup sh -c "cat /opt/ssh/keys/training@1,2,3,4,5,6,7,8,9,10@.pub | ssh admin\\@train@1,2,3,4,5@.test 'cat >> ~training@1@/.ssh/authorized_keys'"
 ```
 
 ## Known issues
 
 - There are no tests - this was a small idea which I haphazardly knocked out over a couple of evenings, so some tidying up is required (bad me, I know, I'm on it!)
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
-- ~- doesn't retrieve the previous working directory - presumably because lup spawns each command in a new shell. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
+- ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
 - ampersands make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, @ seems like the least idiotic character to use, however I'm open open to suggestions
 - spaced arguments get plonked into double quotes before run, I don't have visibility of the original quotes in os.Args so I'm not sure how to fix this. The end result is if you have double quotes inside single quotes - `lup 'echo @hello,\"goodbye\"@ \"world\"'`, this is also true of freestanding single quotes with nothing between them, although single quotes inside double quotes are fine.

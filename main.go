@@ -1,5 +1,11 @@
-//go:generate go build
-//go:generate cp ./lup /usr/local/bin
+//go:generate go test
+//go:generate go build main.go
+//go:generate cp ./main /usr/local/bin/lup
+//in lieu of comprehensive tests, I'm going with this for now!
+//go:generate lup echo "@Hello,Bonjour,Yo\\, wud up@ user\\@domain"
+//go:generate lup echo @Hello,Bonjour,Yo\\, wud up@ user\\@domain
+//go:generate lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'
+//go:generate lup echo "@hello,goodbye@ @old,new@ @world,friend@ (@1@ @/3/@)"
 
 package main
 
@@ -10,51 +16,45 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/kballard/go-shellquote"
 )
 
 var version string
 
+var dryRun bool
+var commandLine string
+var delimiter rune
+
 func showHelp(force bool) {
 	if len(os.Args) == 1 || force {
-		fmt.Println(`
-Usage: lup [OPTION] COMMANDLINE
+		fmt.Println(`Usage: lup [OPTION] COMMANDLINE
 
 Run multiple similar commands expanding ampersand encapsulated, comma-separated lists similarly to nested for loops.
 
-     -h     Show this help message and exit
-     -V     Show version information and exit
-     -t     Show commands, but do not execute them  
-`)
+e.g:
+
+  lup @rm,nano@ foo_@1,2@
+
+Expands to and executes:
+
+  rm foo_1
+  rm foo_2
+  nano foo_1
+  nano foo_2
+
+More usage info is available at https://github.com/udkyo/lup
+
+Options:
+
+     -h, --help     Show this help message and exit
+     -V, --version  Show version information and exit
+     -t, --test     Show commands, but do not execute them`)
 		os.Exit(0)
 	}
-}
-
-// detectShell tries to detect the current shell, although  I'm fairly certain
-// that hobbling through ps output and ham-fistedly checking for shell names
-// isn't the best way of doing this
-func detectShell() string {
-	shells := [6]string{"bash", "tcsh", "csh", "ksh", "zsh", "sh"}
-	cmd := exec.Command("ps")
-	t, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Println("Can't execute ps to detect shell - using sh")
-		return "sh"
-	}
-	psOutput := string(t)
-	scanner := bufio.NewScanner(strings.NewReader(psOutput))
-	for scanner.Scan() {
-		for _, w := range strings.Fields(scanner.Text()) {
-			for _, s := range shells {
-				if w == s || w == "-"+s || strings.HasSuffix(w, s) {
-					return strings.Trim(w, "-")
-				}
-			}
-		}
-	}
-	fmt.Println("Couldn't detect shell - using sh")
-	return "sh"
 }
 
 // getStdin grabs input so we can pipe it to generated commands if required
@@ -72,9 +72,9 @@ func getStdin() string {
 
 // getCommandLine returns the current command line sans first word (always lup)
 // and encapsulates spaced args with double quotes
-func getCommandLine() string {
+func getCommandString(argList []string) string {
 	cmd := ""
-	for i, arg := range os.Args[1:] {
+	for i, arg := range argList[1:] {
 		if strings.Contains(arg, " ") {
 			cmd += fmt.Sprintf("\"%s\"", arg)
 		} else if len(arg) == 0 {
@@ -82,10 +82,11 @@ func getCommandLine() string {
 		} else {
 			cmd += arg
 		}
-		if i < len(os.Args) {
+		if i < len(argList)-1 {
 			cmd += " "
 		}
 	}
+	cmd = strings.TrimRight(cmd, " ")
 	return cmd
 }
 
@@ -116,7 +117,7 @@ func generateCommands(str string, rep map[string]string, curTerms map[string]str
 	var output []string
 	mapName := fmt.Sprintf("##%d", curMap)
 	rep[mapName] = stripCommas(rep[mapName])
-	if regexp.MustCompile(`^/[0-9]+/$`).MatchString(rep[mapName]) {
+	if regexp.MustCompile(`^/[0-9]+/$`).MatchString(rep[mapName]) || regexp.MustCompile(`^[0-9]+$`).MatchString(rep[mapName]) {
 		i, _ := strconv.Atoi(strings.Replace(rep[mapName], "/", "", -1))
 		if i > curMap {
 			log.Fatal(fmt.Sprintf("Forward references are not currently possible - switch @/%d/@ and the contents of group %d around", i, i))
@@ -162,53 +163,65 @@ func generateCommands(str string, rep map[string]string, curTerms map[string]str
 func runCommands(commands []string) int {
 	retcode := 0
 	input := getStdin()
-	shell := detectShell()
+	var winCmd []string
 	for _, command := range commands {
-		command = strings.TrimRight(command, " ")
+		winCmd = winCmd[:0]
 		if input != "" {
 			command = "echo " + input + " | " + command
 		}
-		cmd := exec.Command(shell, "-c", command)
-		cmd.Stdout = os.Stdout
-		cmd.Stdin = os.Stdin
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
-		if err != nil {
-			retcode = 1
+		t, _ := shellquote.Split(command)
+		if runtime.GOOS == "windows" {
+			winCmd = append(winCmd, "cmd")
+			winCmd = append(winCmd, "/C")
+			winCmd = append(winCmd, t...)
+			t = winCmd
+		}
+		if len(t) > 1 {
+			cmd := exec.Command(t[0], t[1:]...)
+			cmd.Stdout = os.Stdout
+			cmd.Stdin = os.Stdin
+			cmd.Stderr = os.Stderr
+			err := cmd.Run()
+			if err != nil {
+				fmt.Println(err)
+				retcode = 1
+			}
+		} else {
+			showHelp(true)
+			os.Exit(0)
 		}
 	}
 	return retcode
 }
 
-func main() {
-	version = "v1.0.0"
-
-	replacements := make(map[string]string)
-	commandLine := getCommandLine()
-	dryRun := false
-	switch firstWord := strings.Split(commandLine, " ")[0]; firstWord {
-	case "-V":
-		fmt.Println(version)
-		os.Exit(0)
-	case "-h":
-		showHelp(true)
-		os.Exit(0)
-	case "-t":
-		dryRun = true
-		commandLine = strings.Join(strings.Split(commandLine, " ")[1:], " ")
-	default:
-		if strings.HasPrefix(firstWord, "-") {
-			fmt.Printf("I don't recognise that flag (%s), try using lup -h to see the help\n", firstWord)
-			os.Exit(2)
+func checkFlags() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-V", "--version":
+			fmt.Println(version)
+			os.Exit(0)
+		case "-h", "--help":
+			showHelp(true)
+			os.Exit(0)
+		case "-t", "--test":
+			dryRun = true
+			commandLine = strings.Join(strings.Split(commandLine, " ")[1:], " ")
+		default:
+			if strings.HasPrefix(os.Args[1], "-") {
+				fmt.Printf("Flag not recognised (%s), try using lup -h to see the help\n", os.Args[1])
+				os.Exit(2)
+			}
 		}
 	}
+}
+
+func parseCommandLine(commandLine string) (string, map[string]string, int) {
+	var replacements map[string]string
 	capturing := -1
 	word := ""
 	count := 0
-
-	delimiter := '@'
+	replacements = make(map[string]string)
 	originalCommand := commandLine
-
 	for n, char := range commandLine {
 		if capturing == -1 && char == delimiter {
 			if n == 0 || n > 0 && originalCommand[n-1] != '\\' {
@@ -225,14 +238,27 @@ func main() {
 			word += string(char)
 		}
 	}
+	return commandLine, replacements, count
+}
+
+func main() {
+	version = "v0.1.1"
+	delimiter = '@'
+	dryRun = false
+	replacements := make(map[string]string)
+
+	commandLine = getCommandString(os.Args)
+	checkFlags()
+
+	commandLine, replacements, numMaps := parseCommandLine(commandLine)
 
 	if dryRun {
-		for _, cmd := range generateCommands(commandLine, replacements, make(map[string]string), 0, count) {
+		for _, cmd := range generateCommands(commandLine, replacements, make(map[string]string), 0, numMaps) {
 			fmt.Println(cmd)
 		}
 	} else {
-		if count > 0 {
-			os.Exit(runCommands(generateCommands(commandLine, replacements, make(map[string]string), 0, count)))
+		if numMaps > 0 {
+			os.Exit(runCommands(generateCommands(commandLine, replacements, make(map[string]string), 0, numMaps)))
 		} else {
 			os.Exit(runCommands([]string{commandLine}))
 		}
