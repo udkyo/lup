@@ -1,6 +1,5 @@
 //go:generate go build
 //go:generate cp ./lup /usr/local/bin
-//go:generate lup virsh @destroy,start@ @fry,leela,kif@
 
 package main
 
