@@ -42,13 +42,34 @@ Grab a release from the releases page, extract the binary, copy it to somewhere 
 
 Something like this will do it if you have write access to /usr/local/bin
 
-Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.1/lup_0.1.1_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.2/lup_0.1.2_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
-Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.1/lup_0.1.1_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.2/lup_0.1.2_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
 ## Compiling
 
 Clone this repo and run `go build` then copy the generated executable into a pathed directory and set it to executable.
+
+### What's new in 0.1.2
+
+Expansion of integer ranges is now possible, use `@0..100@` to loop though all the numbers from 0 to 100 for that group.
+
+This command:
+
+`lup echo "this is iteration @0..3@ @hello,goodbye@ world"`
+
+Will show this output:
+
+```
+this is iteration 0 hello world
+this is iteration 0 goodbye world
+this is iteration 1 hello world
+this is iteration 1 goodbye world
+this is iteration 2 hello world
+this is iteration 2 goodbye world
+this is iteration 3 hello world
+this is iteration 3 goodbye world
+```
 
 ### Usage
 You can trigger a dry run by specifying -t as a flag, this will echo the commands which lup intends to run, rather than actually running them.
@@ -89,8 +110,7 @@ lup sh -c "cat /opt/ssh/keys/training@1,2,3,4,5,6,7,8,9,10@.pub | ssh admin\\@tr
 
 ## Known issues
 
-- There are no tests - this was a small idea which I haphazardly knocked out over a couple of evenings, so some tidying up is required (bad me, I know, I'm on it!)
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
 - ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
-- ampersands make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, @ seems like the least idiotic character to use, however I'm open open to suggestions
+- ampersands make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
 - spaced arguments get plonked into double quotes before run, I don't have visibility of the original quotes in os.Args so I'm not sure how to fix this. The end result is if you have double quotes inside single quotes - `lup 'echo @hello,\"goodbye\"@ \"world\"'`, this is also true of freestanding single quotes with nothing between them, although single quotes inside double quotes are fine.

@@ -110,25 +110,67 @@ func stripCommas(word string) string {
 	return word
 }
 
-// generateCommands generates the list of commands which will be executed
-func generateCommands(str string, rep map[string]string, curTerms map[string]string, curMap int, numMaps int) []string {
-	var commas []int
-	var words []string
+func backref(cmdStr string, rep map[string]string, mapName string, curTerms map[string]string, curMap int, numMaps int) []string {
 	var output []string
-	mapName := fmt.Sprintf("##%d", curMap)
-	rep[mapName] = stripCommas(rep[mapName])
 	if regexp.MustCompile(`^/[0-9]+/$`).MatchString(rep[mapName]) || regexp.MustCompile(`^[0-9]+$`).MatchString(rep[mapName]) {
 		i, _ := strconv.Atoi(strings.Replace(rep[mapName], "/", "", -1))
 		if i > curMap {
 			log.Fatal(fmt.Sprintf("Forward references are not currently possible - switch @/%d/@ and the contents of group %d around", i, i))
 		}
 		refMap := fmt.Sprintf("##%d", i-1)
-
 		if curMap == numMaps-1 {
-			output = append(output, strings.Replace(str, mapName, curTerms[refMap], -1))
+			output = append(output, strings.Replace(cmdStr, mapName, curTerms[refMap], -1))
 		} else {
-			output = append(output, generateCommands(strings.Replace(str, mapName, curTerms[refMap], -1), rep, curTerms, curMap+1, numMaps)...)
+			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, curTerms[refMap], -1), rep, curTerms, curMap+1, numMaps)...)
 		}
+	}
+	return output
+}
+
+func expand(text string) string {
+	expanded := ""
+	capturing := -1
+	word := ""
+	for n, char := range text {
+		if capturing == -1 && char == delimiter {
+			if n == 0 || n > 0 && text[n-1] != '\\' {
+				capturing = n + 1
+				expanded = ""
+				word = ""
+			}
+		} else if char == delimiter && capturing > -1 && text[n-1] != '\\' {
+			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)$`)
+			res := re.FindAllStringSubmatch(word, -1)
+			if len(res) > 0 {
+				first, _ := strconv.Atoi(res[0][1])
+				last, _ := strconv.Atoi(res[0][2])
+				for i := first; i <= last; i++ {
+					expanded += strconv.Itoa(i)
+					if i < last {
+						expanded += ","
+					}
+				}
+				text = strings.Replace(text, word, expanded, 1)
+			}
+			capturing = -1
+		} else if capturing > -1 && n >= capturing {
+			word += string(char)
+		}
+	}
+	return text
+}
+
+// generateCommands generates the list of commands which will be executed
+func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]string, curMap int, numMaps int) []string {
+	var commas []int
+	var words []string
+	var output []string
+	mapName := fmt.Sprintf("##%d", curMap)
+	rep[mapName] = stripCommas(rep[mapName])
+
+	output = backref(cmdStr, rep, mapName, curTerms, curMap, numMaps)
+
+	if len(output) > 0 {
 		return output
 	}
 
@@ -147,10 +189,10 @@ func generateCommands(str string, rep map[string]string, curTerms map[string]str
 	if curMap < numMaps-1 {
 		for _, word := range words {
 			curTerms[mapName] = string(word)
-			output = append(output, generateCommands(strings.Replace(str, mapName, string(word), -1), rep, curTerms, curMap+1, numMaps)...)
+			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, string(word), -1), rep, curTerms, curMap+1, numMaps)...)
 		}
 	} else {
-		outerstr := str
+		outerstr := cmdStr
 		for _, word := range words {
 			output = append(output, stripSlashes(strings.Replace(outerstr, mapName, string(word), -1)))
 		}
@@ -242,12 +284,13 @@ func parseCommandLine(commandLine string) (string, map[string]string, int) {
 }
 
 func main() {
-	version = "v0.1.1"
+	version = "v0.1.2"
 	delimiter = '@'
 	dryRun = false
 	replacements := make(map[string]string)
 
 	commandLine = getCommandString(os.Args)
+	commandLine = expand(commandLine)
 	checkFlags()
 
 	commandLine, replacements, numMaps := parseCommandLine(commandLine)
