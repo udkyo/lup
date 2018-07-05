@@ -6,12 +6,18 @@
 //go:generate lup echo @Hello,Bonjour,Yo\\, wud up@ user\\@domain
 //go:generate lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'
 //go:generate lup echo "@hello,goodbye@ @old,new@ @world,friend@ (@1@ @/3/@)"
+//go:generate sh -c "echo 'hello,goodbye' | lup cat @-n,-e@"
+//go:generate lup @1..3@ echo "Iteration @1@"
+//go:generate lup sh -c "echo @1..3@"
+//go:generate lup echo virsh @destroy,start@ @dev,test@_@1..3@
+//go:generate lup echo 'this\"works'
 
 package main
 
 import (
 	"bufio"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -28,6 +34,7 @@ var version string
 var dryRun bool
 var commandLine string
 var delimiter rune
+var shell string
 
 func showHelp(force bool) {
 	if len(os.Args) == 1 || force {
@@ -60,14 +67,47 @@ Options:
 // getStdin grabs input so we can pipe it to generated commands if required
 func getStdin() string {
 	inp := ""
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			inp += scanner.Text()
+	// https://stackoverflow.com/a/22564526 didn't hurt here
+	file := os.Stdin
+	fi, err := file.Stat()
+	if err != nil {
+		fmt.Println("file.Stat()", err)
+	}
+	size := fi.Size()
+	if size > 0 {
+		data, _ := ioutil.ReadAll(os.Stdin)
+		inp = string(data)
+		if len(inp) > 0 {
+			inp = inp[:len(string(data))-1]
 		}
 	}
 	return inp
+}
+
+// detectShell tries to detect the current shell, although  I'm fairly certain
+// that hobbling through ps output and ham-fistedly checking for shell names
+// isn't the best way of doing this
+func detectShell() string {
+	shells := [6]string{"bash", "tcsh", "csh", "ksh", "zsh", "sh"}
+	cmd := exec.Command("ps")
+	t, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Println("Can't execute ps to detect shell - using sh")
+		return "sh"
+	}
+	psOutput := string(t)
+	scanner := bufio.NewScanner(strings.NewReader(psOutput))
+	for scanner.Scan() {
+		for _, w := range strings.Fields(scanner.Text()) {
+			for _, s := range shells {
+				if w == s || w == "-"+s || strings.HasSuffix(w, s) {
+					return strings.Trim(w, "-")
+				}
+			}
+		}
+	}
+	fmt.Println("Couldn't detect shell - using sh")
+	return "sh"
 }
 
 // getCommandLine returns the current command line sans first word (always lup)
@@ -76,7 +116,7 @@ func getCommandString(argList []string) string {
 	cmd := ""
 	for i, arg := range argList[1:] {
 		if strings.Contains(arg, " ") {
-			cmd += fmt.Sprintf("\"%s\"", arg)
+			cmd += fmt.Sprintf("\"%s\"", strings.Replace(arg, "\"", "\\\"", -1))
 		} else if len(arg) == 0 {
 			cmd += "\"\""
 		} else {
@@ -98,6 +138,19 @@ func stripSlashes(word string) string {
 	return word
 }
 
+// addSlashes inject slashes into tokens, skipping the first and last characters
+func addSlashes(token string) string {
+	if len(token) > 1 {
+		middle := token[1 : len(token)-1]
+		middle = strings.Replace(middle, "\"", "\\\"", -1)
+		token = string(token[0]) + middle + string(token[len(token)-1])
+	}
+	// if len(word) == 2 {
+	// 	word = "\\" + string(word[0]) + "\\" + string(word[1])
+	// }
+	return token
+}
+
 // stripCommas removes commas from terms found at the start and end of a group
 func stripCommas(word string) string {
 	word = strings.TrimLeft(word, ",")
@@ -110,6 +163,7 @@ func stripCommas(word string) string {
 	return word
 }
 
+// backref injects the term from a previous group
 func backref(cmdStr string, rep map[string]string, mapName string, curTerms map[string]string, curMap int, numMaps int) []string {
 	var output []string
 	if regexp.MustCompile(`^/[0-9]+/$`).MatchString(rep[mapName]) || regexp.MustCompile(`^[0-9]+$`).MatchString(rep[mapName]) {
@@ -127,6 +181,7 @@ func backref(cmdStr string, rep map[string]string, mapName string, curTerms map[
 	return output
 }
 
+// expand expands numeric ranges
 func expand(text string) string {
 	expanded := ""
 	capturing := -1
@@ -144,13 +199,25 @@ func expand(text string) string {
 			if len(res) > 0 {
 				first, _ := strconv.Atoi(res[0][1])
 				last, _ := strconv.Atoi(res[0][2])
-				for i := first; i <= last; i++ {
-					expanded += strconv.Itoa(i)
-					if i < last {
-						expanded += ","
+				if last < first {
+					for i := first; i >= last; i-- {
+						expanded += strconv.Itoa(i)
+						if i > last {
+							expanded += ","
+						}
 					}
+					text = strings.Replace(text, word, expanded, 1)
+				} else if first < last {
+					for i := first; i <= last; i++ {
+						expanded += strconv.Itoa(i)
+						if i < last {
+							expanded += ","
+						}
+					}
+					text = strings.Replace(text, word, expanded, 1)
+				} else if first == last {
+					log.Fatal("Integer range starts and ends on the same number, please check")
 				}
-				text = strings.Replace(text, word, expanded, 1)
 			}
 			capturing = -1
 		} else if capturing > -1 && n >= capturing {
@@ -167,7 +234,6 @@ func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]
 	var output []string
 	mapName := fmt.Sprintf("##%d", curMap)
 	rep[mapName] = stripCommas(rep[mapName])
-
 	output = backref(cmdStr, rep, mapName, curTerms, curMap, numMaps)
 
 	if len(output) > 0 {
@@ -186,14 +252,27 @@ func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]
 	}
 
 	words = append(words, rep[mapName][previousComma+1:len(rep[mapName])])
+
 	if curMap < numMaps-1 {
 		for _, word := range words {
 			curTerms[mapName] = string(word)
+			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
+				_, err := strconv.Atoi(word)
+				if err == nil {
+					word = ""
+				}
+			}
 			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, string(word), -1), rep, curTerms, curMap+1, numMaps)...)
 		}
 	} else {
 		outerstr := cmdStr
 		for _, word := range words {
+			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
+				_, err := strconv.Atoi(word)
+				if err == nil {
+					word = ""
+				}
+			}
 			output = append(output, stripSlashes(strings.Replace(outerstr, mapName, string(word), -1)))
 		}
 	}
@@ -202,24 +281,51 @@ func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]
 }
 
 // runCommands triggers the commands which have been generated
+// and does a bunch of other stuff that really has no business
+// being in this function but hey, time is in short supply
 func runCommands(commands []string) int {
 	retcode := 0
 	input := getStdin()
 	var winCmd []string
+	var cmd *exec.Cmd
 	for _, command := range commands {
+		t, _ := shellquote.Split(command)
+		for i := 0; i < len(t); i++ {
+			if strings.Contains(t[i], " ") {
+				t[i] = "\"" + t[i] + "\""
+			}
+			if len(t[i]) == 0 {
+				t[i] = "\"\""
+			}
+		}
+		command = strings.Join(t, " ")
 		winCmd = winCmd[:0]
 		if input != "" {
-			command = "echo " + input + " | " + command
+			command = shell + " -c \"echo " + addSlashes(input) + " | " + addSlashes(command) + "\""
 		}
-		t, _ := shellquote.Split(command)
+		t, _ = shellquote.Split(command)
 		if runtime.GOOS == "windows" {
 			winCmd = append(winCmd, "cmd")
 			winCmd = append(winCmd, "/C")
 			winCmd = append(winCmd, t...)
 			t = winCmd
 		}
-		if len(t) > 1 {
-			cmd := exec.Command(t[0], t[1:]...)
+		if dryRun {
+			for i := range t {
+				if t[i] == "" {
+					t[i] = "\"\""
+				}
+			}
+			fmt.Println(strings.Join(t, " "))
+		} else if len(t) > 0 {
+			if len(t) > 1 {
+				cmd = exec.Command(t[0], t[1:]...)
+			} else if len(t) == 1 {
+				cmd = exec.Command(t[0])
+			} else {
+				showHelp(true)
+				os.Exit(0)
+			}
 			cmd.Stdout = os.Stdout
 			cmd.Stdin = os.Stdin
 			cmd.Stderr = os.Stderr
@@ -228,14 +334,12 @@ func runCommands(commands []string) int {
 				fmt.Println(err)
 				retcode = 1
 			}
-		} else {
-			showHelp(true)
-			os.Exit(0)
 		}
 	}
 	return retcode
 }
 
+// checkFlags checks if the first token is a flag and does the needful
 func checkFlags() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -257,6 +361,8 @@ func checkFlags() {
 	}
 }
 
+// parseCommandLine goes through the string finding bits that need replaced
+// building a replacements map and adding placeholders
 func parseCommandLine(commandLine string) (string, map[string]string, int) {
 	var replacements map[string]string
 	capturing := -1
@@ -284,9 +390,10 @@ func parseCommandLine(commandLine string) (string, map[string]string, int) {
 }
 
 func main() {
-	version = "v0.1.2"
+	version = "v0.1.3"
 	delimiter = '@'
 	dryRun = false
+	shell = detectShell()
 	replacements := make(map[string]string)
 
 	commandLine = getCommandString(os.Args)
@@ -294,16 +401,9 @@ func main() {
 	checkFlags()
 
 	commandLine, replacements, numMaps := parseCommandLine(commandLine)
-
-	if dryRun {
-		for _, cmd := range generateCommands(commandLine, replacements, make(map[string]string), 0, numMaps) {
-			fmt.Println(cmd)
-		}
+	if numMaps > 0 {
+		os.Exit(runCommands(generateCommands(commandLine, replacements, make(map[string]string), 0, numMaps)))
 	} else {
-		if numMaps > 0 {
-			os.Exit(runCommands(generateCommands(commandLine, replacements, make(map[string]string), 0, numMaps)))
-		} else {
-			os.Exit(runCommands([]string{commandLine}))
-		}
+		os.Exit(runCommands([]string{commandLine}))
 	}
 }

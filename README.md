@@ -1,8 +1,8 @@
 ## Lup - vertical command expansion
 
-When used as a prefix for a command containing ampersand encapsulated, comma-separated groups of terms, lup processes from left to right, expanding terms as if you are using nested for loops.
+When used as a prefix for a command containing ampersand encapsulated, comma-separated groups of terms, lup processes from left to right, expanding terms and ranges as if they are nested for loops.
 
-`lup virsh @destroy,start@ @dev,test@_@1,2,3@`
+`lup virsh @destroy,start@ @dev,test@_@1..3@`
 
 Is functionally equivalent to:
 ```
@@ -50,31 +50,15 @@ Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.2/lup_0.1.2
 
 Clone this repo and run `go build` then copy the generated executable into a pathed directory and set it to executable.
 
-### What's new in 0.1.2
+## Usage
 
-Expansion of integer ranges is now possible, use `@0..100@` to loop though all the numbers from 0 to 100 for that group.
+### Dry Run
 
-This command:
+You can trigger a dry run by specifying -t as a flag, this will echo the commands which lup intends to run, without actually triggering them.
 
-`lup echo "this is iteration @0..3@ @hello,goodbye@ world"`
+### Escaping control characters
 
-Will show this output:
-
-```
-this is iteration 0 hello world
-this is iteration 0 goodbye world
-this is iteration 1 hello world
-this is iteration 1 goodbye world
-this is iteration 2 hello world
-this is iteration 2 goodbye world
-this is iteration 3 hello world
-this is iteration 3 goodbye world
-```
-
-### Usage
-You can trigger a dry run by specifying -t as a flag, this will echo the commands which lup intends to run, rather than actually running them.
-
-As ampersands and commas within them are being used for control characters, if you need to use these as normal characters, they should be escaped using slashes - note that slashes will need to be escaped themselves in certain situations. As a general rule of thumb you can use:
+Ampersands and commas within them are used as control characters, if you need to use these as normal characters, they should be escaped using slashes - note that slashes will need to be escaped themselves in certain situations. As a general rule of thumb you can use:
 
 Double-slashes when enclosed in double quotes:
 `lup echo "@Hello,Bonjour,Yo\\, wud up@ user\\@domain"`
@@ -85,7 +69,17 @@ Double-slashes when free standing :
 And single-slashes when enclosed in single quotes:
 `lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'`
 
-You'll find you need to escape quotes in certain circumstances - echo "hello world" comes through in os.Args as ["echo", "hello world"] so unless some kind soul can tell me something I've missed, lup has no visibility of the original quotes. Any spaced argument gets dropped into double-quotes by default. So when you have double-quotes nested in single quotes, or single quotes freestanding and empty, escape them with a backslash.
+### Escaping quotes
+
+You'll find you need to escape quotes in certain circumstances - echo "hello world" comes through in os.Args as ["echo", "hello world"] so unless some kind soul can tell me something I've missed, I've got no visibility of the original quotes. Any spaced argument gets dropped into double-quotes by default and escaping happens automatically to the best of lup's ability, but there are situations where things break down.
+
+`lup echo "this\"breaks"`
+
+Is as good an example as any. Lup uses go-shellquote to split and recreate strings and in the example above, all it will be able to see at the end is "echo" whereas `lup echo "this\" works\"` (with a space) is fine. If you needed to have a single word with no spaces, and a double-quote in the middle, you could use `lup echo 'this\"works'` - using single quotes instead of doubles, while still escaping the double-quote (this is needed because lup plonks any spaced token into double quotes)
+
+It's an edge case, but until I can work out a way to get around it it's worth mentioning - use -t first if you're getting fancy. 
+
+### Referencing previous groups
 
 To reuse a term (think: backrefs) you can use ampersands containing a single integer reference, these increment from 1, and the reference cannot come before the group it refers to.
 
@@ -95,18 +89,27 @@ Good:
 Bad:
 `lup echo "@2@ @hello,goodbye@ @world,friend@"`
 
+### Quick loops
+
+You can loop commands without using the parsed term if the parsed term is the first thing in the command line and also a numeric range (e.g. `lup @0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note I'm referring to the index with a backref here, but this isn't necessary)
+
+### Pipes and redirects
+
 Lup won't straddle pipes or redirects, so if you are referencing terms on either side of those, it may be simplest to just pass the command as a string to a new shell as in the following example. 
 
-`lup sh -c "echo @1,2,3,4,5,6,7,8,9,10@ > /tmp/@1@"`
+`lup sh -c "echo @1..10@ > /tmp/@1@"`
 
-Finally, when piping a command's output to lup, it will be captured and piped to each command lup generates and runs.
+### More on pipes
 
-The following will generate 10 ssh key pairs, and push the 10 distinct public keys to 10 different accounts on each of 5 different machines.
+When piping a command's output to lup, that output will be captured and piped to each command lup generates and runs.
+
+However (and this is important) when piping *from* lup, the output of each command lup runs will be merged and you'll probably end up having a pretty bad time. In general, you can encapsulate the whole command in a string and call a new shell with lup for each command it'll trigger:
 
 ```
-lup ssh-keygen -b 4096 -t rsa -f /opt/ssh/keys/training@1,2,3,4,5,6,7,8,9,10@ -q -N ''
-lup sh -c "cat /opt/ssh/keys/training@1,2,3,4,5,6,7,8,9,10@.pub | ssh admin\\@train@1,2,3,4,5@.test 'cat >> ~training@1@/.ssh/authorized_keys'"
+lup sh -c "cat /opt/ssh/keys/training@1..10@.pub | ssh admin\\@train@1,2,3,4,5@.test 'cat >> ~training@1@/.ssh/authorized_keys'"
 ```
+
+Or, you can just not use lup on the left hand side of your pipes (unless you really want all its output to be piped through in one go)
 
 ## Known issues
 
