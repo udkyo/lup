@@ -93,6 +93,10 @@ Bad:
 
 You can loop commands without using the parsed term if the parsed term is the first thing in the command line and also a numeric range (e.g. `lup @0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note I'm referring to the index with a backref here, but this isn't necessary)
 
+### Ranges
+
+Ranges are available, but they must be the only thing contained within that group. They can count upwards or downwards, e.g. @1..100@ or @100..1@
+
 ### Pipes and redirects
 
 Lup won't straddle pipes or redirects, so if you are referencing terms on either side of those, it may be simplest to just pass the command as a string to a new shell as in the following example. 
