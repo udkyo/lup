@@ -54,7 +54,7 @@ Clone this repo and run `go build` then copy the generated executable into a pat
 
 ### Dry Run
 
-You can trigger a dry run by specifying -t as a flag, this will echo the commands which lup intends to run, without actually triggering them.
+You can trigger a dry run by specifying -t as a flag (this must come immediately after "lup" on the command line - the rest of the line is treated as the command to be processed) this will echo the commands which lup intends to run, without actually triggering them.
 
 ### Escaping control characters
 
