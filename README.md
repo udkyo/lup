@@ -1,6 +1,6 @@
 ## Lup - loopy command execution
 
-Lup expands ranges groups of terms in shell commands similarly to using nested for loops.
+Lup expands ranges and groups of terms in shell commands similarly to if you were using nested for loops.
 
 `lup virsh @destroy,start@ @dev,test@_@1..3@`
 
