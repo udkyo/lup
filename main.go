@@ -7,7 +7,7 @@
 //go:generate lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'
 //go:generate lup echo "@hello,goodbye@ @old,new@ @world,friend@ (@1@ @/3/@)"
 //go:generate sh -c "echo 'hello' | lup cat @-n,-e@"
-//go:generate lup @1..3@ echo "Iteration @1@"
+//go:generate lup @-:1..3@ echo "Iteration @1@"
 //go:generate lup sh -c "echo @1..3@"
 //go:generate lup echo virsh @destroy,start@ @dev,test@_@1..3@
 //go:generate lup echo 'this\"works'
@@ -247,39 +247,37 @@ func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]
 		}
 	}
 	previousComma := -1
-	for _, i := range commas {
-		words = append(words, rep[mapName][previousComma+1:i])
-		previousComma = i
+	start := 0
+	if rep[mapName][:2] == "-:" {
+		start = 2
 	}
-
+	for _, i := range commas {
+		words = append(words, rep[mapName][previousComma+1+start:i])
+		previousComma = i
+		if start > 0 {
+			start = 0
+		}
+	}
 	words = append(words, rep[mapName][previousComma+1:len(rep[mapName])])
 
 	if curMap < numMaps-1 {
 		for _, word := range words {
 			curTerms[mapName] = string(word)
-			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
-				_, err := strconv.Atoi(word)
-				if err == nil {
-					word = ""
-				} else {
-					word = ""
-				}
+			if strings.HasPrefix(rep[mapName], "-:") {
+				word = ""
 			}
-			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, string(word), -1), rep, curTerms, curMap+1, numMaps)...)
+			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, string(word), 1),
+				rep, curTerms, curMap+1, numMaps)...)
 		}
 	} else {
 		outerstr := cmdStr
 		for _, word := range words {
-			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
-				_, err := strconv.Atoi(word)
-				if err == nil {
-					word = ""
-				}
+			if strings.HasPrefix(rep[mapName], "-:") {
+				word = ""
 			}
 			output = append(output, stripSlashes(strings.Replace(outerstr, mapName, string(word), -1)))
 		}
 	}
-
 	return output
 }
 
