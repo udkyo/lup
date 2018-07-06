@@ -14,6 +14,12 @@
 //go:generate lup echo "this\"too"
 //go:generate lup echo '"hello world"'
 //go:generate lup echo "quoted" 'quoted' "\"nested\"" "'nested'" '"nested"'
+//go:generate echo "MATCH FILES:"
+//go:generate lup echo "  - @match_files:/tmp@"
+//go:generate echo "MATCH DIRS"
+//go:generate lup echo "  - @match_dirs:/tmp@"
+//go:generate echo "MATCH ALL"
+//go:generate lup echo "  - @match_all:/tmp@"
 
 package main
 
@@ -24,6 +30,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -114,6 +121,14 @@ func detectShell() string {
 	return "sh"
 }
 
+// addSlashes escaped delimiters and commas
+func addSlashes(word string) string {
+	delimiter := '@'
+	word = strings.Replace(word, string(delimiter), "\\"+string(delimiter), -1)
+	word = strings.Replace(word, ",", "\\,", -1)
+	return word
+}
+
 // stripSlashes removes slashes from delimiters and commas
 func stripSlashes(word string) string {
 	delimiter := '@'
@@ -152,47 +167,62 @@ func backref(cmdStr string, rep map[string]string, mapName string, curTerms map[
 	return output
 }
 
-// expand expands numeric ranges
+// expand expands numeric ranges and paths
 func expand(text string) string {
 	expanded := ""
 	capturing := -1
 	word := ""
 	for n, char := range text {
-		if capturing == -1 && char == delimiter {
+		if capturing == -1 && (char == delimiter || char == ',') {
 			if n == 0 || n > 0 && text[n-1] != '\\' {
 				capturing = n + 1
 				expanded = ""
 				word = ""
 			}
-		} else if char == delimiter && capturing > -1 && text[n-1] != '\\' {
-			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)$`)
-			res := re.FindAllStringSubmatch(word, -1)
-			if len(res) > 0 {
-				first, _ := strconv.Atoi(res[0][1])
-				last, _ := strconv.Atoi(res[0][2])
-				if last < first {
-					for i := first; i >= last; i-- {
-						expanded += strconv.Itoa(i)
-						if i > last {
-							expanded += ","
+		} else if (char == delimiter || char == ',') && capturing > -1 && text[n-1] != '\\' {
+			// expand files/dirs
+			if strings.HasPrefix(word, "match_files:") {
+				text = strings.Replace(text, word, getNodes(strings.Replace(word, "match_files:", "", 1), "files"), 1)
+			} else if strings.HasPrefix(word, "match_dirs:") {
+				text = strings.Replace(text, word, getNodes(strings.Replace(word, "match_dirs:", "", 1), "dirs"), 1)
+			} else if strings.HasPrefix(word, "match_all:") {
+				text = strings.Replace(text, word, getNodes(strings.Replace(word, "match_all:", "", 1), "all"), 1)
+			} else {
+				// expand ranges
+				re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)$`)
+				res := re.FindAllStringSubmatch(word, -1)
+				if len(res) > 0 {
+					first, _ := strconv.Atoi(res[0][1])
+					last, _ := strconv.Atoi(res[0][2])
+					if last < first {
+						for i := first; i >= last; i-- {
+							expanded += strconv.Itoa(i)
+							if i > last {
+								expanded += ","
+							}
 						}
-					}
-					text = strings.Replace(text, word, expanded, 1)
-				} else if first < last {
-					for i := first; i <= last; i++ {
-						expanded += strconv.Itoa(i)
-						if i < last {
-							expanded += ","
+						text = strings.Replace(text, word, expanded, 1)
+					} else if first < last {
+						for i := first; i <= last; i++ {
+							expanded += strconv.Itoa(i)
+							if i < last {
+								expanded += ","
+							}
 						}
+						text = strings.Replace(text, word, expanded, 1)
+					} else if first == last {
+						log.Fatal("Integer range starts and ends on the same number, please check")
 					}
-					text = strings.Replace(text, word, expanded, 1)
-				} else if first == last {
-					log.Fatal("Integer range starts and ends on the same number, please check")
 				}
 			}
 			capturing = -1
 		} else if capturing > -1 && n >= capturing {
 			word += string(char)
+		}
+		if char == ',' && n > 0 && text[n-1] != '\\' {
+			capturing = n
+			word = ""
+			expanded = ""
 		}
 	}
 	return text
@@ -230,6 +260,8 @@ func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]
 			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
 				_, err := strconv.Atoi(word)
 				if err == nil {
+					word = ""
+				} else {
 					word = ""
 				}
 			}
@@ -351,7 +383,39 @@ func parseCommandLine(commandLine string) (string, map[string]string, int) {
 	return commandLine, replacements, count
 }
 
+func getNodes(path string, kind string) string {
+	var files []string
+	var globChars = []string{"*", "?", "!", "{", "}"}
+	if !strings.HasSuffix(path, "/*") {
+		path = path + "/*"
+	} else if !strings.HasSuffix(path, "*") {
+		path = path + "*"
+	}
+	for _, char := range globChars {
+		path = strings.Replace(path, "\\"+char, char, -1)
+	}
+	contents, err := filepath.Glob(strings.Replace(path, "\\*", "*", -1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, f := range contents {
+		fi, err := os.Stat(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+		f = "\"" + f + "\""
+		switch mode := fi.Mode(); {
+		case mode.IsDir() && (kind == "all" || kind == "dirs"):
+			files = append(files, f)
+		case mode.IsRegular() && (kind == "all" || kind == "files"):
+			files = append(files, f)
+		}
+	}
+	return strings.Join(files, ",")
+}
+
 func main() {
+	//fmt.Println(getNodes("/tmp/1", "dirs"))
 	shell = detectShell()
 	replacements := make(map[string]string)
 
