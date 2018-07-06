@@ -56,28 +56,20 @@ Clone this repo and run `go build` then copy the generated executable into a pat
 
 You can trigger a dry run by specifying -t as a flag (this must come immediately after "lup" on the command line - the rest of the line is treated as the command to be processed) this will echo the commands which lup intends to run, without actually triggering them.
 
-### Escaping control characters
+### Spaces in terms
 
-Ampersands and commas within them are used as control characters, if you need to use these as normal characters, they should be escaped using slashes - note that slashes will need to be escaped themselves in certain situations. As a general rule of thumb you can use:
+If you have spaces in any of your terms, you must encapsulate the group in either single or double quotes:
 
-Double-slashes when enclosed in double quotes:
-`lup echo "@Hello,Bonjour,Yo\\, wud up@ user\\@domain"`
+`lup echo "@Hello,Well hello there@"`
 
-Double-slashes when free standing :
-`lup echo @Hello,Bonjour,Yo\\, wud up@ user\\@domain`
+### Escaping special characters
 
-And single-slashes when enclosed in single quotes:
-`lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'`
+Ampersands and commas (inside ampersand groups) are used as control characters, if you need to use these as normal characters, they should be escaped using slashes - note that slashes will need to be escaped with a single preceeding backslash
 
-### Escaping quotes
+`lup echo '@Hello,Bonjour,Yo\, wud up@' user\@domain`
 
-You'll find you need to escape quotes in certain circumstances - echo "hello world" comes through in os.Args as ["echo", "hello world"] so unless some kind soul can tell me something I've missed, I've got no visibility of the original quotes. Any spaced argument gets dropped into double-quotes by default and escaping happens automatically to the best of lup's ability, but there are situations where things break down.
+Whenever you escape commas or ampersands inside a group, you must also enclose the group in quotes.
 
-`lup echo "this\"breaks"`
-
-Is as good an example as any. Lup uses go-shellquote to split and recreate strings and in the example above, all it will be able to see at the end is "echo" whereas `lup echo "this\" works\"` (with a space) is fine. If you needed to have a single word with no spaces, and a double-quote in the middle, you could use `lup echo 'this\"works'` - using single quotes instead of doubles, while still escaping the double-quote (this is needed because lup plonks any spaced token into double quotes)
-
-It's an edge case, but until I can work out a way to get around it it's worth mentioning - use -t first if you're getting fancy. 
 
 ### Referencing previous groups
 

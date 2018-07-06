@@ -1,16 +1,19 @@
+//go:generate go get github.com/udkyo/go-shellquote
 //go:generate go test
 //go:generate go build main.go
 //go:generate cp ./main /usr/local/bin/lup
 //in lieu of comprehensive tests, I'm going with this for now!
 //go:generate lup echo "@Hello,Bonjour,Yo\\, wud up@ user\\@domain"
-//go:generate lup echo @Hello,Bonjour,Yo\\, wud up@ user\\@domain
 //go:generate lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'
 //go:generate lup echo "@hello,goodbye@ @old,new@ @world,friend@ (@1@ @/3/@)"
-//go:generate sh -c "echo 'hello,goodbye' | lup cat @-n,-e@"
+//go:generate sh -c "echo 'hello' | lup cat @-n,-e@"
 //go:generate lup @1..3@ echo "Iteration @1@"
 //go:generate lup sh -c "echo @1..3@"
 //go:generate lup echo virsh @destroy,start@ @dev,test@_@1..3@
 //go:generate lup echo 'this\"works'
+//go:generate lup echo "this\"too"
+//go:generate lup echo '"hello world"'
+//go:generate lup echo "quoted" 'quoted' "\"nested\"" "'nested'" '"nested"'
 
 package main
 
@@ -26,15 +29,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kballard/go-shellquote"
+	shellquote "github.com/kballard/go-shellquote"
 )
 
-var version string
-
-var dryRun bool
-var commandLine string
-var delimiter rune
-var shell string
+var (
+	version     = "v0.1.4"
+	dryRun      = false
+	commandLine = ""
+	delimiter   = '@'
+	shell       = "sh"
+)
 
 func showHelp(force bool) {
 	if len(os.Args) == 1 || force {
@@ -110,45 +114,12 @@ func detectShell() string {
 	return "sh"
 }
 
-// getCommandLine returns the current command line sans first word (always lup)
-// and encapsulates spaced args with double quotes
-func getCommandString(argList []string) string {
-	cmd := ""
-	for i, arg := range argList[1:] {
-		if strings.Contains(arg, " ") {
-			cmd += fmt.Sprintf("\"%s\"", strings.Replace(arg, "\"", "\\\"", -1))
-		} else if len(arg) == 0 {
-			cmd += "\"\""
-		} else {
-			cmd += arg
-		}
-		if i < len(argList)-1 {
-			cmd += " "
-		}
-	}
-	cmd = strings.TrimRight(cmd, " ")
-	return cmd
-}
-
 // stripSlashes removes slashes from delimiters and commas
 func stripSlashes(word string) string {
 	delimiter := '@'
 	word = strings.Replace(word, "\\"+string(delimiter), string(delimiter), -1)
 	word = strings.Replace(word, "\\,", ",", -1)
 	return word
-}
-
-// addSlashes inject slashes into tokens, skipping the first and last characters
-func addSlashes(token string) string {
-	if len(token) > 1 {
-		middle := token[1 : len(token)-1]
-		middle = strings.Replace(middle, "\"", "\\\"", -1)
-		token = string(token[0]) + middle + string(token[len(token)-1])
-	}
-	// if len(word) == 2 {
-	// 	word = "\\" + string(word[0]) + "\\" + string(word[1])
-	// }
-	return token
 }
 
 // stripCommas removes commas from terms found at the start and end of a group
@@ -288,22 +259,13 @@ func runCommands(commands []string) int {
 	input := getStdin()
 	var winCmd []string
 	var cmd *exec.Cmd
+
 	for _, command := range commands {
-		t, _ := shellquote.Split(command)
-		for i := 0; i < len(t); i++ {
-			if strings.Contains(t[i], " ") {
-				t[i] = "\"" + t[i] + "\""
-			}
-			if len(t[i]) == 0 {
-				t[i] = "\"\""
-			}
-		}
-		command = strings.Join(t, " ")
 		winCmd = winCmd[:0]
 		if input != "" {
-			command = shell + " -c \"echo " + addSlashes(input) + " | " + addSlashes(command) + "\""
+			command = shell + " -c \"echo " + shellquote.Join(input) + " | " + command + "\""
 		}
-		t, _ = shellquote.Split(command)
+		t, _ := shellquote.Split(command)
 		if runtime.GOOS == "windows" {
 			winCmd = append(winCmd, "cmd")
 			winCmd = append(winCmd, "/C")
@@ -316,7 +278,7 @@ func runCommands(commands []string) int {
 					t[i] = "\"\""
 				}
 			}
-			fmt.Println(strings.Join(t, " "))
+			fmt.Println(shellquote.Join(t...))
 		} else if len(t) > 0 {
 			if len(t) > 1 {
 				cmd = exec.Command(t[0], t[1:]...)
@@ -390,13 +352,10 @@ func parseCommandLine(commandLine string) (string, map[string]string, int) {
 }
 
 func main() {
-	version = "v0.1.3"
-	delimiter = '@'
-	dryRun = false
 	shell = detectShell()
 	replacements := make(map[string]string)
 
-	commandLine = getCommandString(os.Args)
+	commandLine = shellquote.Join(os.Args[1:]...)
 	commandLine = expand(commandLine)
 	checkFlags()
 
