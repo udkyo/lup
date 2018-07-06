@@ -1,6 +1,6 @@
-## Lup - vertical command expansion
+## Lup - loopy command execution
 
-When used as a prefix for a command containing ampersand encapsulated, comma-separated groups of terms, lup processes from left to right, expanding terms and ranges as if they are nested for loops.
+Lup expands ranges groups of terms in shell commands similarly to using nested for loops.
 
 `lup virsh @destroy,start@ @dev,test@_@1..3@`
 
@@ -112,4 +112,3 @@ Or, you can just not use lup on the left hand side of your pipes (unless you rea
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
 - ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
 - ampersands make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
-- spaced arguments get plonked into double quotes before run, I don't have visibility of the original quotes in os.Args so I'm not sure how to fix this. The end result is if you have double quotes inside single quotes - `lup 'echo @hello,\"goodbye\"@ \"world\"'`, this is also true of freestanding single quotes with nothing between them, although single quotes inside double quotes are fine.
