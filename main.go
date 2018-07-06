@@ -15,11 +15,11 @@
 //go:generate lup echo '"hello world"'
 //go:generate lup echo "quoted" 'quoted' "\"nested\"" "'nested'" '"nested"'
 //go:generate echo "MATCH FILES:"
-//go:generate lup echo "  - @match_files:/tmp@"
+//go:generate lup echo "  - @match_files:/tmp/*@"
 //go:generate echo "MATCH DIRS"
-//go:generate lup echo "  - @match_dirs:/tmp@"
+//go:generate lup echo "  - @match_dirs:/tmp/*@"
 //go:generate echo "MATCH ALL"
-//go:generate lup echo "  - @match_all:/tmp@"
+//go:generate lup echo "  - @match_all:/tmp/*@"
 
 package main
 
@@ -386,15 +386,10 @@ func parseCommandLine(commandLine string) (string, map[string]string, int) {
 func getNodes(path string, kind string) string {
 	var files []string
 	var globChars = []string{"*", "?", "!", "{", "}"}
-	if !strings.HasSuffix(path, "/*") {
-		path = path + "/*"
-	} else if !strings.HasSuffix(path, "*") {
-		path = path + "*"
-	}
 	for _, char := range globChars {
 		path = strings.Replace(path, "\\"+char, char, -1)
 	}
-	contents, err := filepath.Glob(strings.Replace(path, "\\*", "*", -1))
+	contents, err := filepath.Glob(path)
 	if err != nil {
 		log.Fatal(err)
 	}
