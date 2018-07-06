@@ -64,16 +64,16 @@ If you have spaces in any of your terms, you must encapsulate the group in eithe
 
 ### Escaping special characters
 
-Ampersands and commas (inside ampersand groups) are used as control characters, if you need to use these as normal characters, they should be escaped using slashes - note that slashes will need to be escaped with a single preceeding backslash
+At symbols and commas (inside at symbol groups) are used as control characters, if you need to use these as normal characters, they should be escaped using slashes - note that slashes will need to be escaped with a single preceeding backslash
 
 `lup echo '@Hello,Bonjour,Yo\, wud up@' user\@domain`
 
-Whenever you escape commas or ampersands inside a group, you must also enclose the group in quotes.
+Whenever you escape commas or at symbols inside a group, you must also enclose the group in quotes.
 
 
 ### Referencing previous groups
 
-To reuse a term (think: backrefs) you can use ampersands containing a single integer reference, these increment from 1, and the reference cannot come before the group it refers to.
+To reuse a term (think: backrefs) you can use at symbols containing a single integer reference, these increment from 1, and the reference cannot come before the group it refers to.
 
 Good:
 `lup echo "@hello,goodbye@ @world,friend@ (@1@)"`
@@ -111,4 +111,4 @@ Or, you can just not use lup on the left hand side of your pipes (unless you rea
 
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
 - ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
-- ampersands make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
+- at symbols make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
