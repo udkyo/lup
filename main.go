@@ -189,8 +189,14 @@ func expand(text string) string {
 				text = strings.Replace(text, word, getNodes(strings.Replace(word, "match_all:", "", 1), "all"), 1)
 			} else {
 				// expand ranges
+				start := 0
+				prefix := ""
+				if strings.HasPrefix(word, "-:") {
+					start = 2
+					prefix = "-:"
+				}
 				re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)$`)
-				res := re.FindAllStringSubmatch(word, -1)
+				res := re.FindAllStringSubmatch(word[start:], -1)
 				if len(res) > 0 {
 					first, _ := strconv.Atoi(res[0][1])
 					last, _ := strconv.Atoi(res[0][2])
@@ -201,7 +207,7 @@ func expand(text string) string {
 								expanded += ","
 							}
 						}
-						text = strings.Replace(text, word, expanded, 1)
+						text = strings.Replace(text, word, prefix+expanded, 1)
 					} else if first < last {
 						for i := first; i <= last; i++ {
 							expanded += strconv.Itoa(i)
@@ -209,7 +215,7 @@ func expand(text string) string {
 								expanded += ","
 							}
 						}
-						text = strings.Replace(text, word, expanded, 1)
+						text = strings.Replace(text, word, prefix+expanded, 1)
 					} else if first == last {
 						log.Fatal("Integer range starts and ends on the same number, please check")
 					}
@@ -408,7 +414,6 @@ func getNodes(path string, kind string) string {
 }
 
 func main() {
-	//fmt.Println(getNodes("/tmp/1", "dirs"))
 	shell = detectShell()
 	replacements := make(map[string]string)
 
