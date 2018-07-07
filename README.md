@@ -70,7 +70,6 @@ Ampersands and commas (inside ampersand groups) are used as control characters, 
 
 Whenever you escape commas or ampersands inside a group, you must also enclose the group in quotes.
 
-
 ### Referencing previous groups
 
 To reuse a term (think: backrefs) you can use ampersands containing a single integer reference, these increment from 1, and the reference cannot come before the group it refers to.
@@ -81,13 +80,67 @@ Good:
 Bad:
 `lup echo "@2@ @hello,goodbye@ @world,friend@"`
 
-### Quick loops
+### Hiding terms
 
-You can loop commands without using the parsed term if the parsed term is the first thing in the command line and also a numeric range (e.g. `lup @0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note I'm referring to the index with a backref here, but this isn't necessary)
+You can prevent terms from being used in a command by hiding them with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in.
 
 ### Ranges
 
 Ranges are available, but they must be the only thing contained within that group. They can count upwards or downwards, e.g. @1..100@ or @100..1@
+
+### File Globbing
+
+You can expand paths using essentially standard globbing patterns using certain colon suffixed keywords. However the behaviour requires some explanation.
+
+Loop for all dirs in /
+`lup echo @dirs:/tmp/foo/*@`
+
+Loop for all files in /
+`lup echo @files:/tmp/foo/*@`
+
+Loop for everything in /
+`lup echo @all:/tmp/foo/*@`
+
+What results is a list of file/dir names only, not the entire path - this makes it easier to manipulate names with backrefs later.
+
+Consider the following:
+
+`lup cp "/tmp/foo/@files:/tmp/foo/*@" "/tmp/bar/@dirs:/tmp/bar/*@/FILE_@1@"`
+
+Two important things worth noting - dirs returned have no trailing slash, so we needed to add one after the @ group.
+
+The other noteworthy things about this example is that by ensuring the path exists in the command prior to the @files:@ block, we were fill the full path for each command. but as all the @files@ block captures is the filename, we can transform it later on the line - if lup returned the entire path, adding the FILE_ prefix would have been a headache.
+
+However, the example above can also be simplified:
+
+`lup -t cp "/tmp/foo/@files:*@" "/tmp/bar/@dirs:*@/FILE_@1@"`
+
+When the files/dir/all blocks don't contain a path (i.e. they only contain the term followed by a colon) lup uses any path detected immediately prior to the block opening as the path processing should take place on, and all you need to provide to @files: is the pattern you would like to match. 
+
+Or, to put it another way, these two things are more or less the same, but with one major difference which we'll discuss next:
+
+`/tmp/foo/@files:*@`
+`/tmp/foo/@files:/tmp/foo/@`
+
+The place where behaviour varies in the path prior to the lup @@ block. If you are using pattern matching outside the @@s, lup references the *full file path* for each match. 
+
+These will show the same results as we're only echoing the full path:
+
+```
+lup -t echo "/tmp/f*o/@files:*@"
+lup -t echo "/tmp/foo/@files:*@"
+```
+
+When trying to reference just the filename via a backref though the difference comes into focus:
+
+```
+lup -t echo "/tmp/f*o/@files:*@" @1@
+lup -t echo "/tmp/foo/@files:*@" @1@
+```
+
+in the first example, all the files in the backref are full paths including filename. This is because of the pattern matching being imported from the path prior to the @@ field
+
+
 
 ### Pipes and redirects
 
