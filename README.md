@@ -36,6 +36,14 @@ virsh start test_3
 
 Each command is run in sequence. In the event any command fails, lup will continue to trigger the remaining commands and will send 1 as its return code. Only if all commands run successfully will lup return 0.
 
+## Trying it out
+
+You can play around with lup in docker by running the following:
+
+```
+docker run -it --rm golang:alpine sh -c "apk add --no-cache curl && curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin && sh“
+```
+
 ## Installing
 
 Grab a release from the releases page, extract the binary, copy it to somewhere in your path (/usr/local/bin or /usr/bin are probably good choices) and set it to executable.
@@ -55,6 +63,8 @@ Clone this repo and run `go build` then copy the generated executable into a pat
 ### Dry Run
 
 You can trigger a dry run by specifying -t as a flag (this must come immediately after "lup" on the command line - the rest of the line is treated as the command to be processed) this will echo the commands which lup intends to run, without actually triggering them.
+
+Lup isn't very polished yet, so a dry run first is always a good idea.
 
 ### Spaces in terms
 
