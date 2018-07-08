@@ -177,4 +177,4 @@ Or, you can just not use lup on the left hand side of your pipes (unless you rea
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
 - ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
 - at symbols make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
-- lup triggers binaries, it doesn't operate on shell built-ins like set or export, so unfortunately you can't do things like `lup export @http,https@_proxy=http://foo/
+- lup triggers binaries, it doesn't operate on shell built-ins like set or export, so unfortunately you can't do things like `lup export @http,https@_proxy=http://foo/`
