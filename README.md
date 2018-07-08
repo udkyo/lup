@@ -41,7 +41,13 @@ Each command is run in sequence. In the event any command fails, lup will contin
 You can play around with lup in docker by running the following:
 
 ```
-docker run -it --rm golang:alpine sh -c "apk add --no-cache curl && curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin && sh“
+docker run -it --rm golang:alpine \
+  sh -c \
+  "apk add --no-cache curl \
+   && curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_linux_amd64.tar.gz \
+   | tar xz lup \
+   && chmod +x lup ; \
+   mv lup /usr/local/bin && sh"
 ```
 
 ## Installing
