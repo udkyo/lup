@@ -42,9 +42,9 @@ Grab a release from the releases page, extract the binary, copy it to somewhere 
 
 Something like this will do it if you have write access to /usr/local/bin
 
-Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.4/lup_0.1.4_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
-Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.1.4/lup_0.1.4_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
 ## Compiling
 
@@ -82,7 +82,7 @@ Bad:
 
 ### Hiding terms
 
-You can prevent terms from being used in a command by hiding them with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in.
+You can prevent terms from being used in a command by hiding them with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in. This can only be applied at the start of a group and will hide results for each term contained therein.
 
 ### Ranges
 
@@ -90,7 +90,7 @@ Ranges are available, but they must be the only thing contained within that grou
 
 ### File Globbing
 
-You can expand paths using essentially standard globbing patterns using certain colon suffixed keywords. However the behaviour requires some explanation.
+You can expand paths using standard globbing patterns using certain colon suffixed keywords. However the behaviour requires some explanation.
 
 Loop for all dirs in /
 `lup echo @dirs:/tmp/foo/*@`
@@ -109,9 +109,9 @@ Consider the following:
 
 Two important things worth noting - dirs returned have no trailing slash, so we needed to add one after the @ group.
 
-The other noteworthy things about this example is that by ensuring the path exists in the command prior to the @files:@ block, we were fill the full path for each command. but as all the @files@ block captures is the filename, we can transform it later on the line - if lup returned the entire path, adding the FILE_ prefix would have been a headache.
+The other noteworthy things about this example is that by ensuring the path exists in the command prior to the @files:@ block, we filled the complete path. All the @files@ block captures is the filename so we can use it meaningfully elsewhere. If lup returned the entire path, copying and adding a prefix to a file like this would be more complicated.
 
-However, the example above can also be simplified:
+However, the example above can be simplified further:
 
 `lup -t cp "/tmp/foo/@files:*@" "/tmp/bar/@dirs:*@/FILE_@1@"`
 
@@ -120,9 +120,9 @@ When the files/dir/all blocks don't contain a path (i.e. they only contain the t
 Or, to put it another way, these two things are more or less the same, but with one major difference which we'll discuss next:
 
 `/tmp/foo/@files:*@`
-`/tmp/foo/@files:/tmp/foo/@`
+`/tmp/foo/@files:/tmp/foo/*@`
 
-The place where behaviour varies in the path prior to the lup @@ block. If you are using pattern matching outside the @@s, lup references the *full file path* for each match. 
+Where lup's behavior varies is when pattern matching outside the @@s, lup references the *full file path* for each match. 
 
 These will show the same results as we're only echoing the full path:
 
@@ -131,16 +131,12 @@ lup -t echo "/tmp/f*o/@files:*@"
 lup -t echo "/tmp/foo/@files:*@"
 ```
 
-When trying to reference just the filename via a backref though the difference comes into focus:
+But when trying to reference the filename via a backref it becomes obvious that the glob directive inheriting its path from outside the block is strictly full-paths only, while the other is file/node names alone.
 
 ```
 lup -t echo "/tmp/f*o/@files:*@" @1@
 lup -t echo "/tmp/foo/@files:*@" @1@
 ```
-
-in the first example, all the files in the backref are full paths including filename. This is because of the pattern matching being imported from the path prior to the @@ field
-
-
 
 ### Pipes and redirects
 
