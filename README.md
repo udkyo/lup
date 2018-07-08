@@ -98,7 +98,19 @@ Bad:
 
 ### Hiding terms
 
-You can prevent terms from being used in a command by hiding them with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in.
+You can prevent terms from being used in a command by opening the block with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in.
+
+Consider this somewhat ridiculous example:
+
+`lup echo @1,2@ @3,4@ @5,6@`
+
+The 8 combinations are echoed in sequence from "1 3 5" through to "2 4 6", with the first group being the outermost loop - the first 4 results will **start** with 1, and the last 4 results will **start** with 2
+
+To switch this so that @1,2@ is the innermost loop, we could reverse the order the blocks appear in, and reference them in reverse order using backrefs:
+
+`lup @-:5,6@ @-:3,4@ @-:1,2@ echo @3@ @2@ @1@`
+
+With this change, @-:5,6@ is the outermost loop - the first 4 results will **end** with 5, and the final 4 will **end** with 6.
 
 ### Ranges
 
@@ -136,9 +148,9 @@ When the files/dir/all blocks don't contain a path lup uses any path it detects 
 Or, to put it another way, these two things are more or less the same, except for one major difference which we'll discuss next:
 
 `/tmp/foo/@files:*@`
-`/tmp/foo/@files:/tmp/foo/*@`
+`@files:/tmp/foo/*@`
 
-However, when pattern a pattern is provided outside the @@s, lup references the *full file path* for each match. 
+However, when pattern a pattern is provided outside the @@s, lup references the *full file path* for each match. Similarly, when referencing relative paths inside the block, the relative block will be injected rather than simply the filename.
 
 These will show the same results as we're only echoing the full path:
 
@@ -178,3 +190,4 @@ Or, you can just not use lup on the left hand side of your pipes (unless you rea
 - ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
 - at symbols make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
 - lup triggers binaries, it doesn't operate on shell built-ins like set or export, so unfortunately you can't do things like `lup export @http,https@_proxy=http://foo/`
+- command substitution happens up front, so if you find yourself in a position where you need to use $() or `` inside a lup command, you're going to need to use a traditional loop instead.

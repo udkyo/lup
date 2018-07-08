@@ -1,7 +1,7 @@
 //go:generate go get github.com/udkyo/go-shellquote
 //go:generate go test
 //go:generate go build main.go
-//go:generate cp ./main /usr/local/bin/lup
+//go:generate mv ./main /usr/local/bin/lup
 
 package main
 
@@ -21,26 +21,23 @@ import (
 )
 
 var (
-	version = "v0.2.0"
-
-	delimiter = '@'
-	shell     = "sh"
-
+	version      = "v0.2.0"
+	delimiter    = '@'
+	shell        = "sh"
 	input        = ""
 	command      = ""
 	replacements map[string]string
-
-	dryRun = false
-	errors = false
-
-	hider     = "-:"
-	globChars = []rune{'*', '?', '!', '{', '}'}
+	dryRun       = false
+	errors       = false
+	hider        = "-:"
+	globChars    = []rune{'*', '?', '!', '{', '}'}
 )
 
 func errIf(err error) {
 	if err != nil {
 		errors = true
 		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
@@ -309,10 +306,7 @@ func unwrap(text string) string {
 
 			for _, marker := range []string{"files", "dirs", "all"} {
 				if strings.HasPrefix(word, marker+":") || strings.HasPrefix(word, "-:"+marker+":") {
-					if strings.HasPrefix(word, marker+":/") || strings.HasPrefix(word, "-:"+marker+":") {
-						path = ""
-					}
-					replacement := getNodes(path+strings.Replace(word, marker+":", "", 1), marker, hasGlobs(path))
+					replacement := getNodes(strings.Replace(word, marker+":", "", 1), path, marker)
 					newtext = strings.Replace(newtext, word, replacement, 1)
 				}
 			}
@@ -333,7 +327,6 @@ func unwrap(text string) string {
 func generateCommands(cmdStr string, curTerms map[string]string, curMap int, numMaps int) []string {
 	var words []string
 	var output []string
-
 	mapName := fmt.Sprintf("##%d", curMap)
 	r := stripCommas(replacements[mapName])
 	output = backref(cmdStr, mapName, curTerms, curMap, numMaps)
@@ -451,25 +444,49 @@ func parseCommand(cmd string) (string, map[string]string) {
 	return cmd, r
 }
 
-func getNodes(path string, kind string, tainted bool) string {
+func getNodes(directivePath string, externalPath string, kind string) string {
 	var nodes []string
 	var prefix string
-	if isHidden(path) {
-		path = path[2:]
+	var tainted bool
+	var rel bool
+
+	if isHidden(directivePath) {
+		directivePath = directivePath[2:]
 		prefix = hider
 	}
+	if !strings.HasPrefix(directivePath, "/") {
+		rel = true
+	}
+	errOn(!rel && externalPath != "", "fatal: don't mix and match importing paths from outside @@ blocks and absolute paths inside them, no bueno (map: "+directivePath+")", 5)
 
-	path = unescapeGlobChars(path)
-	contents, err := filepath.Glob(path)
+	if hasGlobs(externalPath) {
+		tainted = true
+	}
+	directivePath = unescapeGlobChars(directivePath)
+	fullPath := directivePath
+	if externalPath != "" {
+		if !strings.HasSuffix(externalPath, "/") || isEscaped(externalPath, len(externalPath)-1) {
+			fullPath = externalPath + "/" + directivePath
+		} else {
+			fullPath = externalPath + directivePath
+		}
+	}
+	contents, err := filepath.Glob(fullPath)
 	errIf(err)
-	errOn(len(contents) == 0, "No nodes matched ("+kind+": "+path+")", 3)
+	errOn(len(contents) == 0, "No nodes matched ("+kind+": "+directivePath+")", 3)
 	for _, f := range contents {
 		nodeStat, err := os.Stat(f)
 		errIf(err)
 		if tainted {
 			f = strings.Replace(f, " ", "\\ ", -1)
 		} else {
-			f = strings.Replace(filepath.Base(f), " ", "\\ ", -1)
+			if filepath.Dir(f) != "." && rel {
+				s, err := filepath.Rel(externalPath, f)
+				errIf(err)
+				f = s
+			} else {
+				f = strings.Replace(filepath.Base(f), " ", "\\ ", -1)
+			}
 		}
 		switch mode := nodeStat.Mode(); {
 		case mode.IsDir() && (kind == "all" || kind == "dirs"):

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -15,6 +16,40 @@ var generateCommandsTests = []struct {
 	e []string // expected
 }{
 	{"echo \"@hello,world@\"", []string{"echo \"hello\"", "echo \"world\""}},
+}
+
+var hasGlobsTests = []struct {
+	s string // supplied
+	e bool   // expected
+}{
+	{"/tmp/*/", true},
+	{"/tmp/*", true},
+	{"/tmp/a?c/", true},
+	{"/tmp/1!2/", true},
+	{"/tmp/3{4/", true},
+	{"/tmp/5}6/", true},
+}
+
+var isHiddenTests = []struct {
+	s string // supplied
+	e bool   // expected
+}{
+	{"-:Hello", true},
+	{"-Goodbye", false},
+	{"cat", false},
+	{":-dog", false},
+}
+
+var isEscapedTests = []struct {
+	s string // text
+	n int    // position
+	e bool   // expected result
+}{
+	{"He\\llo", 3, true},
+	{"He\\llo", 4, false},
+	{"He\\llo", 2, false},
+	{"\\Hello", 1, true},
+	{"Hell\\o", 5, true},
 }
 
 // var Tests = []struct {
@@ -40,14 +75,41 @@ func TestStripSlashes(t *testing.T) {
 func TestGenerateCommands(t *testing.T) {
 	delimiter = '@'
 	for _, x := range generateCommandsTests {
-		commandLine := x.s
-		commandLine, replacements = parseCommand(commandLine)
+		//command = x.s
+		command, replacements = parseCommand(x.s)
 		expected := x.e
-		result := generateCommands(commandLine, make(map[string]string), 0, len(replacements))
+		result := generateCommands(command, make(map[string]string), 0, len(replacements))
 		for n := range result {
 			if result[n] != expected[n] {
 				t.Errorf("generateCommands failed - Got: %s, Want: %s", result[n], expected[n])
 			}
+		}
+	}
+}
+
+func TestHasGlobs(t *testing.T) {
+	for _, x := range hasGlobsTests {
+		result := hasGlobs(x.s)
+		if result != x.e {
+			t.Errorf("hasGlobs failed on '%s'", x.s)
+		}
+	}
+}
+
+func TestIsHidden(t *testing.T) {
+	for _, x := range isHiddenTests {
+		result := strings.HasPrefix(x.s, hider)
+		if result != x.e {
+			t.Errorf("isHidden failed on '%s'", x.s)
+		}
+	}
+}
+
+func TestIsEscaped(t *testing.T) {
+	for _, x := range isEscapedTests {
+		result := isEscaped(x.s, x.n)
+		if result != x.e {
+			t.Errorf("isEscaped failed on '%s:%d'", x.s, x.n)
 		}
 	}
 }
