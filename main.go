@@ -290,7 +290,7 @@ func unwrap(text string) string {
 							expanded += ","
 						}
 					}
-					newtext = strings.Replace(text, word, prefix+expanded, 1)
+					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
 				} else if first < last {
 					for i := first; i <= last; i++ {
 						expanded += strconv.Itoa(i)
