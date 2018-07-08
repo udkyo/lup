@@ -2,18 +2,6 @@
 //go:generate go test
 //go:generate go build main.go
 //go:generate cp ./main /usr/local/bin/lup
-//in lieu of comprehensive tests, I'm going with this for now!
-//go:generate lup echo "@Hello,Bonjour,Yo\\, wud up@ user\\@domain"
-//go:generate lup echo '@Hello,Bonjour,Yo\, wud up@ user\@domain'
-//go:generate lup echo "@hello,goodbye@ @old,new@ @world,friend@ (@1@ @/3/@)"
-//go:generate sh -c "echo 'hello' | lup cat @-n,-e@"
-//go:generate lup @1..3@ echo "Iteration @1@"
-//go:generate lup sh -c "echo @1..3@"
-//go:generate lup echo virsh @destroy,start@ @dev,test@_@1..3@
-//go:generate lup echo 'this\"works'
-//go:generate lup echo "this\"too"
-//go:generate lup echo '"hello world"'
-//go:generate lup echo "quoted" 'quoted' "\"nested\"" "'nested'" '"nested"'
 
 package main
 
@@ -24,8 +12,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -33,12 +21,136 @@ import (
 )
 
 var (
-	version     = "v0.1.4"
-	dryRun      = false
-	commandLine = ""
-	delimiter   = '@'
-	shell       = "sh"
+	version = "v0.2.0"
+
+	delimiter = '@'
+	shell     = "sh"
+
+	input        = ""
+	command      = ""
+	replacements map[string]string
+
+	dryRun = false
+	errors = false
+
+	hider     = "-:"
+	globChars = []rune{'*', '?', '!', '{', '}'}
 )
+
+func errIf(err error) {
+	if err != nil {
+		errors = true
+		fmt.Println(err)
+	}
+}
+
+func errOn(failed bool, msg string, returnCode int) {
+	if failed {
+		fmt.Println("fatal:", msg)
+		os.Exit(returnCode)
+	}
+}
+
+func hasGlobs(text string) bool {
+	var m bool
+	for _, c := range text {
+		if runeIn(globChars, c) {
+			m = true
+		}
+	}
+	return m
+}
+
+func isHidden(text string) bool {
+	if strings.HasPrefix(text, hider) {
+		return true
+	}
+	return false
+}
+
+func isEscaped(text string, n int) bool {
+	if n > 0 && text[n-1] == '\\' {
+		return true
+	}
+	return false
+}
+
+func runeIn(group []rune, r rune) bool {
+	for _, x := range group {
+		if string(x) == string(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func unescapeGlobChars(text string) string {
+	for _, char := range globChars {
+		text = strings.Replace(text, "\\"+string(char), string(char), -1)
+	}
+	return text
+}
+
+func splitBy(s string, r rune) []string {
+	commas := getUnescapedIndices(s, r)
+	words := splitByIndices(s, commas)
+	return words
+}
+
+func getUnescapedIndices(text string, char rune) []int {
+	var commas []int
+	var prev rune
+	for i, c := range text {
+		if c == rune(char) && i > 0 && prev != '\\' {
+			commas = append(commas, i)
+		}
+		prev = c
+	}
+	return commas
+}
+
+func splitByIndices(text string, indices []int) []string {
+	var words []string
+	var start int
+	if isHidden(text) {
+		start = 2
+	}
+	prevIndex := -1
+
+	for _, i := range indices {
+		words = append(words, text[prevIndex+1+start:i])
+		prevIndex = i
+		if start > 0 {
+			start = 0
+		}
+	}
+	words = append(words, text[prevIndex+1:len(text)])
+	return words
+}
+
+func addSlashes(word string) string {
+	delimiter := '@'
+	word = strings.Replace(word, string(delimiter), "\\"+string(delimiter), -1)
+	word = strings.Replace(word, ",", "\\,", -1)
+	return word
+}
+
+func stripSlashes(word string) string {
+	delimiter := '@'
+	word = strings.Replace(word, "\\"+string(delimiter), string(delimiter), -1)
+	word = strings.Replace(word, "\\,", ",", -1)
+	return word
+}
+
+func stripCommas(word string) string {
+	word = strings.TrimLeft(word, ",")
+	if len(word) > 2 {
+		if word[len(word)-1] == ',' && word[len(word)-2] != '\\' {
+			word = strings.TrimRight(word, ",")
+		}
+	}
+	return word
+}
 
 func showHelp(force bool) {
 	if len(os.Args) == 1 || force {
@@ -68,7 +180,6 @@ Options:
 	}
 }
 
-// getStdin grabs input so we can pipe it to generated commands if required
 func getStdin() string {
 	inp := ""
 	// https://stackoverflow.com/a/22564526 didn't hurt here
@@ -88,9 +199,6 @@ func getStdin() string {
 	return inp
 }
 
-// detectShell tries to detect the current shell, although  I'm fairly certain
-// that hobbling through ps output and ham-fistedly checking for shell names
-// isn't the best way of doing this
 func detectShell() string {
 	shells := [6]string{"bash", "tcsh", "csh", "ksh", "zsh", "sh"}
 	cmd := exec.Command("ps")
@@ -114,62 +222,70 @@ func detectShell() string {
 	return "sh"
 }
 
-// stripSlashes removes slashes from delimiters and commas
-func stripSlashes(word string) string {
-	delimiter := '@'
-	word = strings.Replace(word, "\\"+string(delimiter), string(delimiter), -1)
-	word = strings.Replace(word, "\\,", ",", -1)
-	return word
-}
-
-// stripCommas removes commas from terms found at the start and end of a group
-func stripCommas(word string) string {
-	word = strings.TrimLeft(word, ",")
-
-	if len(word) > 2 {
-		if word[len(word)-1] == ',' && word[len(word)-2] != '\\' {
-			word = strings.TrimRight(word, ",")
-		}
-	}
-	return word
-}
-
-// backref injects the term from a previous group
-func backref(cmdStr string, rep map[string]string, mapName string, curTerms map[string]string, curMap int, numMaps int) []string {
+func backref(cmdStr string, mapName string, curTerms map[string]string, curMap int, numMaps int) []string {
 	var output []string
-	if regexp.MustCompile(`^/[0-9]+/$`).MatchString(rep[mapName]) || regexp.MustCompile(`^[0-9]+$`).MatchString(rep[mapName]) {
-		i, _ := strconv.Atoi(strings.Replace(rep[mapName], "/", "", -1))
-		if i > curMap {
-			log.Fatal(fmt.Sprintf("Forward references are not currently possible - switch @/%d/@ and the contents of group %d around", i, i))
-		}
+	if regexp.MustCompile(`^/[0-9]+/$`).MatchString(replacements[mapName]) || regexp.MustCompile(`^[0-9]+$`).MatchString(replacements[mapName]) {
+		i, _ := strconv.Atoi(strings.Replace(replacements[mapName], "/", "", -1))
+		errOn(i > curMap, fmt.Sprintf("Forward references are not currently possible - switch @%d@ and the contents of group %d around", i, i), 4)
 		refMap := fmt.Sprintf("##%d", i-1)
 		if curMap == numMaps-1 {
 			output = append(output, strings.Replace(cmdStr, mapName, curTerms[refMap], -1))
 		} else {
-			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, curTerms[refMap], -1), rep, curTerms, curMap+1, numMaps)...)
+			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, curTerms[refMap], -1), curTerms, curMap+1, numMaps)...)
 		}
 	}
 	return output
 }
 
-// expand expands numeric ranges
-func expand(text string) string {
+func unwrap(text string) string {
 	expanded := ""
 	capturing := -1
 	word := ""
+	newtext := text
+	pathStart := -1
+	path := ""
+
 	for n, char := range text {
-		if capturing == -1 && char == delimiter {
-			if n == 0 || n > 0 && text[n-1] != '\\' {
-				capturing = n + 1
-				expanded = ""
-				word = ""
+		escaped := isEscaped(text, n)
+
+		if capturing == -1 {
+			if pathStart == -1 && char == '/' && !escaped {
+				pathStart = n
 			}
-		} else if char == delimiter && capturing > -1 && text[n-1] != '\\' {
-			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)$`)
-			res := re.FindAllStringSubmatch(word, -1)
-			if len(res) > 0 {
-				first, _ := strconv.Atoi(res[0][1])
-				last, _ := strconv.Atoi(res[0][2])
+		}
+		if char == delimiter && !escaped {
+			if pathStart > -1 {
+				path = text[pathStart:n]
+			}
+			pathStart = -1
+		}
+
+		if (capturing == -1 && char == delimiter) && !escaped {
+			capturing = n + 1
+			expanded = ""
+			word = ""
+		} else if char == delimiter || char == ',' && capturing > -1 && !escaped {
+			if hasGlobs(path) {
+				newtext = strings.Replace(newtext, path, "", 1)
+			}
+
+			start := 0
+			prefix := ""
+			if isHidden(word) {
+				start = 2
+				prefix = "-:"
+			}
+
+			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)`)
+			res := re.FindAllStringSubmatch(word[start:], -1)
+
+			for m, x := range res {
+				if len(x) == 0 {
+					break
+				}
+				first, _ := strconv.Atoi(res[m][1])
+				last, _ := strconv.Atoi(res[m][2])
+
 				if last < first {
 					for i := first; i >= last; i-- {
 						expanded += strconv.Itoa(i)
@@ -177,7 +293,7 @@ func expand(text string) string {
 							expanded += ","
 						}
 					}
-					text = strings.Replace(text, word, expanded, 1)
+					newtext = strings.Replace(text, word, prefix+expanded, 1)
 				} else if first < last {
 					for i := first; i <= last; i++ {
 						expanded += strconv.Itoa(i)
@@ -185,69 +301,66 @@ func expand(text string) string {
 							expanded += ","
 						}
 					}
-					text = strings.Replace(text, word, expanded, 1)
-				} else if first == last {
-					log.Fatal("Integer range starts and ends on the same number, please check")
+					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
+				} else {
+					errOn(first == last, "Integer range starts and ends on the same number, please check", 3)
+				}
+			}
+
+			for _, marker := range []string{"files", "dirs", "all"} {
+				if strings.HasPrefix(word, marker+":") || strings.HasPrefix(word, "-:"+marker+":") {
+					if strings.HasPrefix(word, marker+":/") || strings.HasPrefix(word, "-:"+marker+":") {
+						path = ""
+					}
+					replacement := getNodes(path+strings.Replace(word, marker+":", "", 1), marker, hasGlobs(path))
+					newtext = strings.Replace(newtext, word, replacement, 1)
 				}
 			}
 			capturing = -1
 		} else if capturing > -1 && n >= capturing {
 			word += string(char)
 		}
+		if char == ',' && n > 0 && !escaped {
+			capturing = n
+			word = ""
+			expanded = ""
+		}
 	}
-	return text
+	return newtext
 }
 
 // generateCommands generates the list of commands which will be executed
-func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]string, curMap int, numMaps int) []string {
-	var commas []int
+func generateCommands(cmdStr string, curTerms map[string]string, curMap int, numMaps int) []string {
 	var words []string
 	var output []string
+
 	mapName := fmt.Sprintf("##%d", curMap)
-	rep[mapName] = stripCommas(rep[mapName])
-	output = backref(cmdStr, rep, mapName, curTerms, curMap, numMaps)
+	r := stripCommas(replacements[mapName])
+	output = backref(cmdStr, mapName, curTerms, curMap, numMaps)
 
 	if len(output) > 0 {
 		return output
 	}
 
-	for i := range rep[mapName] {
-		if rep[mapName][i] == ',' && i > 0 && rep[mapName][i-1] != '\\' {
-			commas = append(commas, i)
-		}
-	}
-	previousComma := -1
-	for _, i := range commas {
-		words = append(words, rep[mapName][previousComma+1:i])
-		previousComma = i
-	}
-
-	words = append(words, rep[mapName][previousComma+1:len(rep[mapName])])
-
+	words = splitBy(r, ',')
 	if curMap < numMaps-1 {
 		for _, word := range words {
 			curTerms[mapName] = string(word)
-			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
-				_, err := strconv.Atoi(word)
-				if err == nil {
-					word = ""
-				}
+			if strings.HasPrefix(r, "-:") {
+				word = ""
 			}
-			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, string(word), -1), rep, curTerms, curMap+1, numMaps)...)
+			output = append(output, generateCommands(strings.Replace(cmdStr, mapName, string(word), 1),
+				curTerms, curMap+1, numMaps)...)
 		}
 	} else {
 		outerstr := cmdStr
 		for _, word := range words {
-			if curMap == 0 && strings.Split(cmdStr, " ")[0] == "##0" {
-				_, err := strconv.Atoi(word)
-				if err == nil {
-					word = ""
-				}
+			if strings.HasPrefix(r, "-:") {
+				word = ""
 			}
 			output = append(output, stripSlashes(strings.Replace(outerstr, mapName, string(word), -1)))
 		}
 	}
-
 	return output
 }
 
@@ -255,24 +368,17 @@ func generateCommands(cmdStr string, rep map[string]string, curTerms map[string]
 // and does a bunch of other stuff that really has no business
 // being in this function but hey, time is in short supply
 func runCommands(commands []string) int {
-	retcode := 0
-	input := getStdin()
-	var winCmd []string
+	var retcode int
 	var cmd *exec.Cmd
 
 	for _, command := range commands {
-		winCmd = winCmd[:0]
 		if input != "" {
 			command = shell + " -c \"echo " + shellquote.Join(input) + " | " + command + "\""
 		}
-		t, _ := shellquote.Split(command)
-		if runtime.GOOS == "windows" {
-			winCmd = append(winCmd, "cmd")
-			winCmd = append(winCmd, "/C")
-			winCmd = append(winCmd, t...)
-			t = winCmd
-		}
+		t, err := shellquote.Split(command)
+		errIf(err)
 		if dryRun {
+			//null tokens were presumably once quotes
 			for i := range t {
 				if t[i] == "" {
 					t[i] = "\"\""
@@ -288,14 +394,9 @@ func runCommands(commands []string) int {
 				showHelp(true)
 				os.Exit(0)
 			}
-			cmd.Stdout = os.Stdout
-			cmd.Stdin = os.Stdin
-			cmd.Stderr = os.Stderr
+			cmd.Stdout, cmd.Stdin, cmd.Stderr = os.Stdout, os.Stdin, os.Stderr
 			err := cmd.Run()
-			if err != nil {
-				fmt.Println(err)
-				retcode = 1
-			}
+			errIf(err)
 		}
 	}
 	return retcode
@@ -313,7 +414,7 @@ func checkFlags() {
 			os.Exit(0)
 		case "-t", "--test":
 			dryRun = true
-			commandLine = strings.Join(strings.Split(commandLine, " ")[1:], " ")
+			command = strings.Join(strings.Split(command, " ")[1:], " ")
 		default:
 			if strings.HasPrefix(os.Args[1], "-") {
 				fmt.Printf("Flag not recognised (%s), try using lup -h to see the help\n", os.Args[1])
@@ -323,24 +424,23 @@ func checkFlags() {
 	}
 }
 
-// parseCommandLine goes through the string finding bits that need replaced
+// parseCommand goes through the string finding bits that need replaced
 // building a replacements map and adding placeholders
-func parseCommandLine(commandLine string) (string, map[string]string, int) {
-	var replacements map[string]string
+func parseCommand(cmd string) (string, map[string]string) {
+	var word string
 	capturing := -1
-	word := ""
 	count := 0
-	replacements = make(map[string]string)
-	originalCommand := commandLine
-	for n, char := range commandLine {
+	r := make(map[string]string)
+	originalCommand := cmd
+	for n, char := range cmd {
 		if capturing == -1 && char == delimiter {
-			if n == 0 || n > 0 && originalCommand[n-1] != '\\' {
+			if n == 0 || originalCommand[n-1] != '\\' {
 				capturing = n + 1
 			}
-		} else if char == delimiter && capturing > -1 && originalCommand[n-1] != '\\' {
+		} else if char == delimiter && capturing > 0 && originalCommand[n-1] != '\\' {
 			ref := fmt.Sprintf("##%d", count)
-			commandLine = strings.Replace(commandLine, string(delimiter)+word+string(delimiter), ref, 1)
-			replacements[ref] = word
+			cmd = strings.Replace(cmd, string(delimiter)+word+string(delimiter), ref, 1)
+			r[ref] = word
 			capturing = -1
 			word = ""
 			count++
@@ -348,21 +448,52 @@ func parseCommandLine(commandLine string) (string, map[string]string, int) {
 			word += string(char)
 		}
 	}
-	return commandLine, replacements, count
+	return cmd, r
+}
+
+func getNodes(path string, kind string, tainted bool) string {
+	var nodes []string
+	var prefix string
+	if isHidden(path) {
+		path = path[2:]
+		prefix = hider
+	}
+
+	path = unescapeGlobChars(path)
+	contents, err := filepath.Glob(path)
+	errIf(err)
+	errOn(len(contents) == 0, "No nodes matched ("+kind+": "+path+")", 3)
+	for _, f := range contents {
+		nodeStat, err := os.Stat(f)
+		errIf(err)
+		if tainted {
+			f = strings.Replace(f, " ", "\\ ", -1)
+		} else {
+			f = strings.Replace(filepath.Base(f), " ", "\\ ", -1)
+		}
+		switch mode := nodeStat.Mode(); {
+		case mode.IsDir() && (kind == "all" || kind == "dirs"):
+			nodes = append(nodes, f)
+		case mode.IsRegular() && (kind == "all" || kind == "files"):
+			nodes = append(nodes, f)
+		}
+	}
+	return prefix + strings.Join(nodes, ",")
 }
 
 func main() {
+	input = getStdin()
 	shell = detectShell()
-	replacements := make(map[string]string)
 
-	commandLine = shellquote.Join(os.Args[1:]...)
-	commandLine = expand(commandLine)
+	command = unwrap(shellquote.Join(os.Args[1:]...))
+
 	checkFlags()
+	command, replacements = parseCommand(command)
 
-	commandLine, replacements, numMaps := parseCommandLine(commandLine)
-	if numMaps > 0 {
-		os.Exit(runCommands(generateCommands(commandLine, replacements, make(map[string]string), 0, numMaps)))
+	if len(replacements) > 0 {
+		triggers := generateCommands(command, make(map[string]string), 0, len(replacements))
+		os.Exit(runCommands(triggers))
 	} else {
-		os.Exit(runCommands([]string{commandLine}))
+		os.Exit(runCommands([]string{command}))
 	}
 }
