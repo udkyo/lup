@@ -43,9 +43,9 @@ Grab a release from the releases page, extract the binary, copy it to somewhere 
 
 Something like this will do it if you have write access to /usr/local/bin
 
-Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.1/lup_0.2.1_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.2/lup_0.2.2_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
-Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.1/lup_0.2.1_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.2/lup_0.2.2_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
 If you want to just bring up a container with it to try it out, you can run:
 
