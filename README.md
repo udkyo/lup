@@ -1,6 +1,6 @@
 ## Lup - loopy command execution
 
-Lup expands ranges and groups of terms in shell commands similarly to if you were using nested for loops.
+Lup expands ranges and groups of terms in shell commands similarly to if you were using nested for loops. For example:
 
 `lup virsh @destroy,start@ @dev,test@_@1..3@`
 
@@ -36,9 +36,18 @@ virsh start test_3
 
 Each command is run in sequence. In the event any command fails, lup will continue to trigger the remaining commands and will send 1 as its return code. Only if all commands run successfully will lup return 0.
 
-## Trying it out
 
-You can play around with lup in docker by running the following:
+## Installing
+
+Grab a release from the releases page, extract the binary, copy it to somewhere in your path (/usr/local/bin or /usr/bin are probably good choices) and set it to executable.
+
+Something like this will do it if you have write access to /usr/local/bin
+
+Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+
+Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
+
+If you want to just bring up a container with it to try it out, you can run:
 
 ```
 docker run -it --rm alpine \
@@ -50,16 +59,6 @@ docker run -it --rm alpine \
    mv lup /usr/local/bin && \
    sh"
 ```
-
-## Installing
-
-Grab a release from the releases page, extract the binary, copy it to somewhere in your path (/usr/local/bin or /usr/bin are probably good choices) and set it to executable.
-
-Something like this will do it if you have write access to /usr/local/bin
-
-Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_darwin_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
-
-Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.0/lup_0.2.0_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
 ## Compiling
 
@@ -99,23 +98,23 @@ Bad:
 
 ### Hiding terms
 
-You can prevent terms from being used in a command by hiding them with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in. This can only be applied at the start of a group and will hide results for each term contained therein.
+You can prevent terms from being used in a command by hiding them with -: e.g. `lup @-:0..10@ echo "Iteration @1@"` will echo the iteration 10 times, note you can still refer to these by index in a later backref. This can be helpful if you need to change the order commands run in.
 
 ### Ranges
 
-Ranges are available, but they must be the only thing contained within that group. They can count upwards or downwards, e.g. @1..100@ or @100..1@
+Numerical ranges are available, they can count upwards or downwards, e.g. @1..100@ or @100..1@
 
 ### File Globbing
 
-You can expand paths using standard globbing patterns using certain colon suffixed keywords. However the behaviour requires some explanation.
+You can expand paths using standard globbing patterns using colon suffixed keywords. However the behaviour requires some explanation.
 
-Loop for all dirs in /
+All dirs in /
 `lup echo @dirs:/tmp/foo/*@`
 
-Loop for all files in /
+All files in /
 `lup echo @files:/tmp/foo/*@`
 
-Loop for everything in /
+Everything in /
 `lup echo @all:/tmp/foo/*@`
 
 What results is a list of file/dir names only, not the entire path - this makes it easier to manipulate names with backrefs later.
@@ -126,20 +125,20 @@ Consider the following:
 
 Two important things worth noting - dirs returned have no trailing slash, so we needed to add one after the @ group.
 
-The other noteworthy things about this example is that by ensuring the path exists in the command prior to the @files:@ block, we filled the complete path. All the @files@ block captures is the filename so we can use it meaningfully elsewhere. If lup returned the entire path, copying and adding a prefix to a file like this would be more complicated.
+The other noteworthy thing about this example is that by ensuring the path exists in the command prior to the @files:@ block, we filled the complete path. All the @files@ block captures is the filename so we can use it meaningfully elsewhere. If lup returned the entire path, copying and adding a prefix to a file like this would be more complicated.
 
 However, the example above can be simplified further:
 
-`lup -t cp "/tmp/foo/@files:*@" "/tmp/bar/@dirs:*@/FILE_@1@"`
+`lup cp "/tmp/foo/@files:*@" "/tmp/bar/@dirs:*@/FILE_@1@"`
 
-When the files/dir/all blocks don't contain a path (i.e. they only contain the term followed by a colon) lup uses any path detected immediately prior to the block opening as the path processing should take place on, and all you need to provide to @files: is the pattern you would like to match. 
+When the files/dir/all blocks don't contain a path lup uses any path it detects immediately prior to the block opening as the path processing should take place on, and all you need to provide to @files: is the pattern you would like to match. 
 
-Or, to put it another way, these two things are more or less the same, but with one major difference which we'll discuss next:
+Or, to put it another way, these two things are more or less the same, except for one major difference which we'll discuss next:
 
 `/tmp/foo/@files:*@`
 `/tmp/foo/@files:/tmp/foo/*@`
 
-Where lup's behavior varies is when pattern matching outside the @@s, lup references the *full file path* for each match. 
+However, when pattern a pattern is provided outside the @@s, lup references the *full file path* for each match. 
 
 These will show the same results as we're only echoing the full path:
 
