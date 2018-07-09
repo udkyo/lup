@@ -1,8 +1,8 @@
 ## Lup - loopy command execution
 
-Lup expands @ encapsulated blocks in shell commands similarly to if you were using nested for loops. 
-
 ![Lup demo](https://raw.githubusercontent.com/udkyo/assets/master/lup2.gif)
+
+Lup expands @ encapsulated blocks in shell commands similarly to if you were using nested for loops. 
 
 Each command is run in sequence. In the event any command fails, lup will continue to trigger the remaining commands and will send 1 as its return code. Only if all commands run successfully will lup return 0.
 
@@ -88,14 +88,11 @@ You can expand paths using standard globbing patterns using colon suffixed keywo
 
 #### Basic directives:
 
-All directories in /tmp/foo/
-`lup echo @dirs:/tmp/foo/*@`
+`@dirs:/tmp/foo/*@` - All directories in /tmp/foo/
 
-All files in /tmp/foo/
-`lup echo @files:/tmp/foo/*@`
+`@files:/tmp/foo/*@` - All files in /tmp/foo/
 
-Everything in /tmp/foo/
-`lup echo @all:/tmp/foo/*@`
+`@all:/tmp/foo/*@` - Everything in /tmp/foo/
 
 Let's look more closely at the behavior of these directives by running some commands against a directory /tmp/lup, which has the subdirectories foo, bar and baz:
 
