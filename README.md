@@ -35,7 +35,7 @@ Each command is run in sequence. In the event any command fails, lup will contin
     * [File Globbing](#file-globbing)
     * [Pipes and redirects](#pipes-and-redirects)
     * [More on pipes](#more-on-pipes)
-    * [Known issues](#known-issues)
+  * [Known issues](#known-issues)
 
 ## Installing
 
