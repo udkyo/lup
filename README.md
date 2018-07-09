@@ -1,38 +1,8 @@
 ## Lup - loopy command execution
 
-Lup expands ranges and groups of terms in shell commands similarly to if you were using nested for loops. For example:
+Lup expands @ encapsulated blocks in shell commands similarly to if you were using nested for loops. 
 
-`lup virsh @destroy,start@ @dev,test@_@1..3@`
-
-Is functionally equivalent to:
-```
-for action in destroy start
-do
-  for environment in dev test
-  do
-    for i in 1 2 3
-    do
-      virsh $action $environment\_$i
-    done
-  done
-done
-```
-
-Or simply:
-```
-virsh destroy dev_1
-virsh destroy dev_2
-virsh destroy dev_3
-virsh destroy test_1
-virsh destroy test_2
-virsh destroy test_3
-virsh start dev_1
-virsh start dev_2
-virsh start dev_3
-virsh start test_1
-virsh start test_2
-virsh start test_3
-```
+![Lup demo](https://raw.githubusercontent.com/udkyo/assets/master/lup2.gif)
 
 Each command is run in sequence. In the event any command fails, lup will continue to trigger the remaining commands and will send 1 as its return code. Only if all commands run successfully will lup return 0.
 
@@ -47,7 +17,7 @@ Mac: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.2/lup_0.2.2_d
 
 Linux: `curl -sL https://github.com/udkyo/lup/releases/download/v0.2.2/lup_0.2.2_linux_amd64.tar.gz | tar xz lup && chmod +x lup ; mv lup /usr/local/bin`
 
-If you want to just bring up a container with it to try it out, you can run:
+If you want to just bring up a container with it to play around, just run:
 
 ```
 docker run -it --rm alpine \
@@ -60,10 +30,6 @@ docker run -it --rm alpine \
    sh"
 ```
 
-## Compiling
-
-Clone this repo and run `go build` then copy the generated executable into a pathed directory and set it to executable.
-
 ## Usage
 
 ### Dry Run
@@ -74,7 +40,7 @@ Lup isn't very polished yet, so a dry run first is always a good idea.
 
 ### Spaces in terms
 
-If you have spaces in any of your terms, you must encapsulate the group in either single or double quotes:
+If you have spaces in any of your terms, the group should be encapsulated in either single or double quotes:
 
 `lup echo "@Hello,Well hello there@"`
 
@@ -118,57 +84,58 @@ Numerical ranges are available, they can count upwards or downwards, e.g. @1..10
 
 ### File Globbing
 
-You can expand paths using standard globbing patterns using colon suffixed keywords. However the behaviour requires some explanation.
+You can expand paths using standard globbing patterns using colon suffixed keywords. However its behaviour varies based on context, it's important not to skim this section.
 
-All dirs in /
+#### Basic directives:
+
+All directories in /tmp/foo/
 `lup echo @dirs:/tmp/foo/*@`
 
-All files in /
+All files in /tmp/foo/
 `lup echo @files:/tmp/foo/*@`
 
-Everything in /
+Everything in /tmp/foo/
 `lup echo @all:/tmp/foo/*@`
 
-What results is a list of file/dir names only, not the entire path - this makes it easier to manipulate names with backrefs later.
+Let's look more closely at the behavior of these directives by running some commands against a directory /tmp/lup, which has the subdirectories foo, bar and baz:
 
-Consider the following:
-
-`lup cp "/tmp/foo/@files:/tmp/foo/*@" "/tmp/bar/@dirs:/tmp/bar/*@/FILE_@1@"`
-
-Two important things worth noting - dirs returned have no trailing slash, so we needed to add one after the @ group.
-
-The other noteworthy thing about this example is that by ensuring the path exists in the command prior to the @files:@ block, we filled the complete path. All the @files@ block captures is the filename so we can use it meaningfully elsewhere. If lup returned the entire path, copying and adding a prefix to a file like this would be more complicated.
-
-However, the example above can be simplified further:
-
-`lup cp "/tmp/foo/@files:*@" "/tmp/bar/@dirs:*@/FILE_@1@"`
-
-When the files/dir/all blocks don't contain a path lup uses any path it detects immediately prior to the block opening as the path processing should take place on, and all you need to provide to @files: is the pattern you would like to match. 
-
-Or, to put it another way, these two things are more or less the same, except for one major difference which we'll discuss next:
-
-`/tmp/foo/@files:*@`
-`@files:/tmp/foo/*@`
-
-However, when pattern a pattern is provided outside the @@s, lup references the *full file path* for each match. Similarly, when referencing relative paths inside the block, the relative block will be injected rather than simply the filename.
-
-These will show the same results as we're only echoing the full path:
-
+When matching via an absolute path, only the name of the folder is returned
 ```
-lup -t echo "/tmp/f*o/@files:*@"
-lup -t echo "/tmp/foo/@files:*@"
+$ lup echo "@dirs:/tmp/lup/*@"
+bar
+baz
+foo
 ```
 
-But when trying to reference the filename via a backref it becomes obvious that the glob directive inheriting its path from outside the block is strictly full-paths only, while the other is file/node names alone.
+When referencing a relative path, the relative path is returned
+```
+$ cd /tmp
+$ lup echo "@dirs:lup/*@"
+lup/bar
+lup/baz
+lup/foo
+```
 
+If an absolute path precedes the block, matches in the block are relative to the external path, and only the relative path is returned (I use a backref here for clarity, as /tmp/lup/ remains in the output by virtue of existing outside the block)
 ```
-lup -t echo "/tmp/f*o/@files:*@" @1@
-lup -t echo "/tmp/foo/@files:*@" @1@
+$ lup echo "/tmp/lup/@dirs:*@ - returned @1@"
+/tmp/lup/bar - returned bar
+/tmp/lup/baz - returned baz
+/tmp/lup/foo - returned foo
 ```
+
+When an absolute path precedes the block and contains a pattern to be matched, the *absolute path* is returned:
+```
+lup echo "/tmp/l?p/@dirs:*@ - returned @1@"
+/tmp/lup/bar - returned /tmp/lup/bar
+/tmp/lup/baz - returned /tmp/lup/baz
+/tmp/lup/foo - returned /tmp/lup/foo
+```
+Notice directory names retrieved have no trailing slash.
 
 ### Pipes and redirects
 
-Lup won't straddle pipes or redirects, so if you are referencing terms on either side of those, it may be simplest to just pass the command as a string to a new shell as in the following example. 
+Lup won't straddle pipes or redirects, so if you are referencing terms on either side of those, it is best to just pass the command as a string to a new shell as in the following example. 
 
 `lup sh -c "echo @1..10@ > /tmp/@1@"`
 
@@ -186,8 +153,8 @@ Or, you can just not use lup on the left hand side of your pipes (unless you rea
 
 ## Known issues
 
+- Tilde completion immediately prior to a @ symbol is a no go. Instead you'll need to use full paths, $(pwd), $OLDPWD etc.
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
-- ~- doesn't retrieve the previous working directory. I'm thinking tilde expansion should happen up front but that's not been the case in testing. Use a variable rather than relying on tilde expansion if you want previous working dir, $OLDPWD for example. On a related note, ~+ *does* work.
 - at symbols make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
 - lup triggers binaries, it doesn't operate on shell built-ins like set or export, so unfortunately you can't do things like `lup export @http,https@_proxy=http://foo/`
-- command substitution happens up front, so if you find yourself in a position where you need to use $() or `` inside a lup command, you're going to need to use a traditional loop instead.
+- command substitution happens up front before lup gets to work, bear that in mind if you're using $() or backticks inside a command that's being triggered by lup and considering putting @blocks@ in it
