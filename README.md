@@ -4,7 +4,7 @@ Lup expands @ encapsulated blocks in shell commands similarly to if you were usi
 
 Each command is run in sequence. In the event any command fails, lup will continue to trigger the remaining commands and will send 1 as its return code. Only if all commands run successfully will lup return 0.
 
-![Lup demo](https://raw.githubusercontent.com/udkyo/assets/master/lup2.gif)
+[![Lup demo](https://raw.githubusercontent.com/udkyo/assets/master/lup2.gif)](https://asciinema.org/a/190728)
 
 ## Installing
 
