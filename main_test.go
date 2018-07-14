@@ -313,9 +313,3 @@ func TestDetectShell(t *testing.T) {
 		t.Errorf("Shell is %s, expected bash(change this in the test for other shells)", shell)
 	}
 }
-
-// func TestGenerateCommands(t *testing.T) {
-// 	s, m := parseCommand("")
-// }
-
-//func parseCommand(cmd string) (string, map[string]string)
