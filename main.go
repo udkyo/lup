@@ -33,124 +33,8 @@ var (
 	globChars    = []rune{'*', '?', '!', '{', '}'}
 )
 
-func errIf(err error) {
-	if err != nil {
-		errors = true
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
-
-func errOn(failed bool, msg string, returnCode int) {
-	if failed {
-		fmt.Println("fatal:", msg)
-		os.Exit(returnCode)
-	}
-}
-
-func hasGlobs(text string) bool {
-	var m bool
-	for _, c := range text {
-		if runeIn(globChars, c) {
-			m = true
-		}
-	}
-	return m
-}
-
-func isHidden(text string) bool {
-	if strings.HasPrefix(text, hider) {
-		return true
-	}
-	return false
-}
-
-func isEscaped(text string, n int) bool {
-	if n > 0 && text[n-1] == '\\' {
-		return true
-	}
-	return false
-}
-
-func runeIn(group []rune, r rune) bool {
-	for _, x := range group {
-		if string(x) == string(r) {
-			return true
-		}
-	}
-	return false
-}
-
-func unescapeGlobChars(text string) string {
-	for _, char := range globChars {
-		text = strings.Replace(text, "\\"+string(char), string(char), -1)
-	}
-	return text
-}
-
-func splitBy(s string, r rune) []string {
-	commas := getUnescapedIndices(s, r)
-	words := splitByIndices(s, commas)
-	return words
-}
-
-func getUnescapedIndices(text string, char rune) []int {
-	var commas []int
-	var prev rune
-	for i, c := range text {
-		if c == rune(char) && i > 0 && prev != '\\' {
-			commas = append(commas, i)
-		}
-		prev = c
-	}
-	return commas
-}
-
-func splitByIndices(text string, indices []int) []string {
-	var words []string
-	var start int
-	if isHidden(text) {
-		start = 2
-	}
-	prevIndex := -1
-
-	for _, i := range indices {
-		words = append(words, text[prevIndex+1+start:i])
-		prevIndex = i
-		if start > 0 {
-			start = 0
-		}
-	}
-	words = append(words, text[prevIndex+1:len(text)])
-	return words
-}
-
-func addSlashes(word string) string {
-	delimiter := '@'
-	word = strings.Replace(word, string(delimiter), "\\"+string(delimiter), -1)
-	word = strings.Replace(word, ",", "\\,", -1)
-	return word
-}
-
-func stripSlashes(word string) string {
-	delimiter := '@'
-	word = strings.Replace(word, "\\"+string(delimiter), string(delimiter), -1)
-	word = strings.Replace(word, "\\,", ",", -1)
-	return word
-}
-
-func stripCommas(word string) string {
-	word = strings.TrimLeft(word, ",")
-	if len(word) > 2 {
-		if word[len(word)-1] == ',' && word[len(word)-2] != '\\' {
-			word = strings.TrimRight(word, ",")
-		}
-	}
-	return word
-}
-func showHelp(force bool) {
-	if len(os.Args) == 1 || force {
-		fmt.Println(`Usage: lup [OPTION] COMMANDLINE
+func showHelp() {
+	fmt.Println(`Usage: lup [OPTION] COMMANDLINE
 
 Run multiple similar commands expanding at-symbol encapsulated, comma-separated lists similarly to nested for loops.
 
@@ -226,8 +110,120 @@ Options:
   -h, --help     Show this help message and exit
   -V, --version  Show version information and exit
   -t, --test     Show commands, but do not execute them`)
-		os.Exit(0)
+	os.Exit(0)
+}
+
+func errIf(err error) {
+	if err != nil {
+		errors = true
+		fmt.Println(err)
+		os.Exit(1)
 	}
+}
+
+func errOn(failed bool, msg string, returnCode int) {
+	if failed {
+		fmt.Println("fatal:", msg)
+		os.Exit(returnCode)
+	}
+}
+
+func hasGlobs(text string) (b bool) {
+	for _, c := range text {
+		if runeIn(globChars, c) {
+			b = true
+		}
+	}
+	return b
+}
+
+func isHidden(text string) (b bool) {
+	if strings.HasPrefix(text, hider) {
+		b = true
+	}
+	return b
+}
+
+func isEscaped(text string, n int) (b bool) {
+	if n > 0 && text[n-1] == '\\' {
+		b = true
+	}
+	return b
+}
+
+func runeIn(group []rune, r rune) (b bool) {
+	for _, x := range group {
+		if string(x) == string(r) {
+			b = true
+		}
+	}
+	return b
+}
+
+func unescapeGlobChars(text string) string {
+	for _, char := range globChars {
+		text = strings.Replace(text, "\\"+string(char), string(char), -1)
+	}
+	return text
+}
+
+func splitBy(s string, r rune) []string {
+	commas := getUnescapedIndices(s, r)
+	words := splitByIndices(s, commas)
+	return words
+}
+
+func getUnescapedIndices(text string, char rune) (commas []int) {
+	var prev rune
+	for i, c := range text {
+		if c == rune(char) && i > 0 && prev != '\\' {
+			commas = append(commas, i)
+		}
+		prev = c
+	}
+	return commas
+}
+
+func splitByIndices(text string, indices []int) (words []string) {
+	var start int
+	if isHidden(text) {
+		start = 2
+	}
+	prevIndex := -1
+
+	for _, i := range indices {
+		words = append(words, text[prevIndex+1+start:i])
+		prevIndex = i
+		if start > 0 {
+			start = 0
+		}
+	}
+	words = append(words, text[prevIndex+1:len(text)])
+	return words
+}
+
+func addSlashes(word string) string {
+	delimiter := '@'
+	word = strings.Replace(word, string(delimiter), "\\"+string(delimiter), -1)
+	word = strings.Replace(word, ",", "\\,", -1)
+	return word
+}
+
+func stripSlashes(word string) string {
+	delimiter := '@'
+	word = strings.Replace(word, "\\"+string(delimiter), string(delimiter), -1)
+	word = strings.Replace(word, "\\,", ",", -1)
+	return word
+}
+
+func stripCommas(word string) string {
+	word = strings.TrimLeft(word, ",")
+	if len(word) > 2 {
+		if word[len(word)-1] == ',' && word[len(word)-2] != '\\' {
+			word = strings.TrimRight(word, ",")
+		}
+	}
+	return word
 }
 
 func getStdin() string {
@@ -288,6 +284,7 @@ func backref(cmdStr string, mapName string, curTerms map[string]string, curMap i
 }
 
 func unwrap(text string) string {
+	// needs broken up, this does range and file expansion
 	expanded := ""
 	capturing := -1
 	word := ""
@@ -437,7 +434,7 @@ func runCommands(commands []string) int {
 			} else if len(t) == 1 {
 				cmd = exec.Command(t[0])
 			} else {
-				showHelp(true)
+				showHelp()
 				os.Exit(0)
 			}
 			cmd.Stdout, cmd.Stdin, cmd.Stderr = os.Stdout, os.Stdin, os.Stderr
@@ -456,7 +453,7 @@ func checkFlags() {
 			fmt.Println(version)
 			os.Exit(0)
 		case "-h", "--help":
-			showHelp(true)
+			showHelp()
 			os.Exit(0)
 		case "-t", "--test":
 			dryRun = true
