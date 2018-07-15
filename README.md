@@ -45,7 +45,7 @@ Something like this will do it if you have write access to /usr/local/bin
 
 #### Mac
 ```
-curl -sL https://github.com/udkyo/lup/releases/download/v0.3.0/lup_0.3.0_darwin_amd64.tar.gz \
+curl -sL https://github.com/udkyo/lup/releases/download/v0.3.1/lup_0.3.1_darwin_amd64.tar.gz \
   | tar xz lup \
   && chmod +x lup
 mv lup /usr/local/bin
@@ -53,7 +53,7 @@ mv lup /usr/local/bin
 
 #### Linux
 ```
-curl -sL https://github.com/udkyo/lup/releases/download/v0.3.0/lup_0.3.0_linux_amd64.tar.gz \
+curl -sL https://github.com/udkyo/lup/releases/download/v0.3.1/lup_0.3.1_linux_amd64.tar.gz \
   | tar xz lup \
   && chmod +x lup ;
 mv lup /usr/local/bin

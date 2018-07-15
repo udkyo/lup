@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -20,7 +19,7 @@ import (
 )
 
 var (
-	version      = "v0.3.0"
+	version      = "v0.3.1"
 	delimiter    = '@'
 	shell        = "sh"
 	input        = ""
@@ -35,14 +34,14 @@ var (
 func errIf(err error) {
 	if err != nil {
 		errors = true
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 func errOn(failed bool, msg string, returnCode int) {
 	if failed {
-		fmt.Println("fatal:", msg)
+		fmt.Fprintln(os.Stderr, "fatal:", msg)
 		os.Exit(returnCode)
 	}
 }
@@ -151,7 +150,7 @@ func getStdin() string {
 	file := os.Stdin
 	fi, err := file.Stat()
 	if err != nil {
-		fmt.Println("file.Stat()", err)
+		fmt.Fprintln(os.Stderr, "file.Stat()", err)
 	}
 	size := fi.Size()
 	if size > 0 {
@@ -169,7 +168,7 @@ func detectShell() string {
 	cmd := exec.Command("ps")
 	t, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Println("Can't execute ps to detect shell - using sh")
+		fmt.Fprintln(os.Stderr, "Can't execute ps to detect shell - using sh")
 		return "sh"
 	}
 	psOutput := string(t)
@@ -183,7 +182,7 @@ func detectShell() string {
 			}
 		}
 	}
-	fmt.Println("Couldn't detect shell - using sh")
+	fmt.Fprintln(os.Stderr, "Couldn't detect shell - using sh")
 	return "sh"
 }
 
@@ -289,7 +288,7 @@ func checkFlags() {
 			command = strings.Join(strings.Split(command, " ")[1:], " ")
 		default:
 			if strings.HasPrefix(os.Args[1], "-") {
-				fmt.Printf("Flag not recognised (%s), try using lup -h to see the help\n", os.Args[1])
+				fmt.Fprintf(os.Stderr, "Flag not recognised (%s), try using lup -h to see the help\n", os.Args[1])
 				os.Exit(2)
 			}
 		}
