@@ -21,7 +21,7 @@ Expands to and executes:
   nano foo_1
   nano foo_2
 
-If spaces are used in the @ group, the entire group must be encapsulated in quotes. If @ symbols are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes if intended as literals.
+If @ symbols in a command or commas (within an @ group) are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes if intended as literals.
 
 Iterating
 ---------
