@@ -27,12 +27,12 @@ Each command is run in sequence. In the event any command fails, lup will contin
     * [Linux](#linux)
   * [Usage](#usage)
     * [Dry run](#dry-run)
+    * [Using spaces in terms](#spaces-in-terms)
     * [Escaping special characters](#escaping-special-characters)
     * [Ranges](#ranges)
     * [Backrefs](#backrefs)
     * [Hidden groups](#hidden-groups)
     * [File Globbing](#file-globbing)
-    * [Reading a file](#reading-a-file)
     * [Pipes and redirects](#pipes-and-redirects)
     * [More on pipes](#more-on-pipes)
   * [Known issues](#known-issues)
@@ -45,7 +45,7 @@ Something like this will do it if you have write access to /usr/local/bin
 
 #### Mac
 ```
-curl -sL https://github.com/udkyo/lup/releases/download/v0.3.0/lup_0.3.0_darwin_amd64.tar.gz \
+curl -sL https://github.com/udkyo/lup/releases/download/v0.2.2/lup_0.2.2_darwin_amd64.tar.gz \
   | tar xz lup \
   && chmod +x lup
 mv lup /usr/local/bin
@@ -53,7 +53,7 @@ mv lup /usr/local/bin
 
 #### Linux
 ```
-curl -sL https://github.com/udkyo/lup/releases/download/v0.3.0/lup_0.3.0_linux_amd64.tar.gz \
+curl -sL https://github.com/udkyo/lup/releases/download/v0.2.2/lup_0.2.2_linux_amd64.tar.gz \
   | tar xz lup \
   && chmod +x lup ;
 mv lup /usr/local/bin
@@ -68,6 +68,12 @@ You can trigger a dry run by specifying -t as a flag, this will show the command
 Note: lup's flags must always be the first thing on the command line after the word 'lup' - everything else gets treated as the command lup should expand.
 
 Another note: Doing a dry run first is always a good idea, at least until you're comfortable with how lup works.
+
+### Using spaces in terms
+
+If you have spaces in any of your terms, the group should be encapsulated in either single or double quotes:
+
+`lup echo "@Hello,Well hello there@"`
 
 ### Escaping special characters
 
@@ -125,25 +131,6 @@ $ lup @-:5,6@ @-:3,4@ @-:1,2@ echo @3@ @2@ @1@
 2 3 6
 1 4 6
 2 4 6
-```
-
-### Reading a File
-
-Text files can be used in @ blocks and injected line by line. For example, given a file containing a list of servers:
-
-```
-Fry
-Leela
-Bender
-```
-
-We can perform an action on each line by using @lines:...@
-
-```
-$ lup -t echo @lines:/tmp/foo/servers.txt@
-echo Fry
-echo Leela
-echo Bender
 ```
 
 ### File Globbing
