@@ -21,7 +21,7 @@ Expands to and executes:
   nano foo_1
   nano foo_2
 
-If spaces are used in the @ group, the entire group must be encapsulated in quotes. If @ symbols are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes if intended as literals.
+If @ symbols in a command or commas (within an @ group) are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes if intended as literals.
 
 Iterating
 ---------
@@ -40,6 +40,22 @@ Backrefs
 You can reference previous blocks in a command by including a standalone integer reference to it in an @ block. We can rework the previous example to echo the contents of the hidden block after the word "Hello" (note: backref values begin at 1 and are a copy of the specific value used in that group on any given line, they are not iterated through as independent loops)
 
   lup @-:1..5@ echo "Hello @1@"
+
+Reading Files
+-------------
+
+Text files can be used in @ blocks and injected line by line. For example, given a file containing a list of servers:
+
+  Fry
+  Leela
+  Bender
+
+  We can perform an action on each line by using @lines:...@
+
+  $ lup -t echo @lines:/tmp/foo/servers.txt@
+  echo Fry
+  echo Leela
+  echo Bender
 
 Filesystem
 ----------
