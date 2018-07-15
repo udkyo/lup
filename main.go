@@ -1,6 +1,6 @@
 //go:generate go get github.com/udkyo/go-shellquote
 //go:generate go test
-//go:generate go build main.go expansions.go help.go
+//go:generate go build main.go
 //go:generate mv ./main /usr/local/bin/lup
 
 package main
@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,36 +48,37 @@ func errOn(failed bool, msg string, returnCode int) {
 	}
 }
 
-func hasGlobs(text string) (b bool) {
+func hasGlobs(text string) bool {
+	var m bool
 	for _, c := range text {
 		if runeIn(globChars, c) {
-			b = true
+			m = true
 		}
 	}
-	return b
+	return m
 }
 
-func isHidden(text string) (b bool) {
+func isHidden(text string) bool {
 	if strings.HasPrefix(text, hider) {
-		b = true
+		return true
 	}
-	return b
+	return false
 }
 
-func isEscaped(text string, n int) (b bool) {
+func isEscaped(text string, n int) bool {
 	if n > 0 && text[n-1] == '\\' {
-		b = true
+		return true
 	}
-	return b
+	return false
 }
 
-func runeIn(group []rune, r rune) (b bool) {
+func runeIn(group []rune, r rune) bool {
 	for _, x := range group {
 		if string(x) == string(r) {
-			b = true
+			return true
 		}
 	}
-	return b
+	return false
 }
 
 func unescapeGlobChars(text string) string {
@@ -92,7 +94,8 @@ func splitBy(s string, r rune) []string {
 	return words
 }
 
-func getUnescapedIndices(text string, char rune) (commas []int) {
+func getUnescapedIndices(text string, char rune) []int {
+	var commas []int
 	var prev rune
 	for i, c := range text {
 		if c == rune(char) && i > 0 && prev != '\\' {
@@ -103,7 +106,8 @@ func getUnescapedIndices(text string, char rune) (commas []int) {
 	return commas
 }
 
-func splitByIndices(text string, indices []int) (words []string) {
+func splitByIndices(text string, indices []int) []string {
+	var words []string
 	var start int
 	if isHidden(text) {
 		start = 2
@@ -143,6 +147,34 @@ func stripCommas(word string) string {
 		}
 	}
 	return word
+}
+
+func showHelp(force bool) {
+	if len(os.Args) == 1 || force {
+		fmt.Println(`Usage: lup [OPTION] COMMANDLINE
+
+Run multiple similar commands expanding ampersand encapsulated, comma-separated lists similarly to nested for loops.
+
+e.g:
+
+  lup @rm,nano@ foo_@1,2@
+
+Expands to and executes:
+
+  rm foo_1
+  rm foo_2
+  nano foo_1
+  nano foo_2
+
+More usage info is available at https://github.com/udkyo/lup
+
+Options:
+
+     -h, --help     Show this help message and exit
+     -V, --version  Show version information and exit
+     -t, --test     Show commands, but do not execute them`)
+		os.Exit(0)
+	}
 }
 
 func getStdin() string {
@@ -203,7 +235,92 @@ func backref(cmdStr string, mapName string, curTerms map[string]string, curMap i
 }
 
 func unwrap(text string) string {
-	return expandLines(expandPaths(expandRanges(text)))
+	expanded := ""
+	capturing := -1
+	word := ""
+	newtext := text
+	pathStart := -1
+	path := ""
+
+	for n, char := range text {
+		escaped := isEscaped(text, n)
+
+		if capturing == -1 {
+			if pathStart == -1 && char == '/' && !escaped {
+				pathStart = n
+			}
+		}
+		if char == delimiter && !escaped {
+			if pathStart > -1 {
+				path = text[pathStart:n]
+			}
+			pathStart = -1
+		}
+
+		if (capturing == -1 && char == delimiter) && !escaped {
+			capturing = n + 1
+			expanded = ""
+			word = ""
+		} else if char == delimiter || char == ',' && capturing > -1 && !escaped {
+			if hasGlobs(path) {
+				newtext = strings.Replace(newtext, path, "", 1)
+			}
+
+			start := 0
+			prefix := ""
+			if isHidden(word) {
+				start = 2
+				prefix = "-:"
+			}
+
+			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)`)
+			res := re.FindAllStringSubmatch(word[start:], -1)
+
+			for m, x := range res {
+				if len(x) == 0 {
+					break
+				}
+				first, _ := strconv.Atoi(res[m][1])
+				last, _ := strconv.Atoi(res[m][2])
+
+				if last < first {
+					for i := first; i >= last; i-- {
+						expanded += strconv.Itoa(i)
+						if i > last {
+							expanded += ","
+						}
+					}
+					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
+				} else if first < last {
+					for i := first; i <= last; i++ {
+						expanded += strconv.Itoa(i)
+						if i < last {
+							expanded += ","
+						}
+					}
+					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
+				} else {
+					errOn(first == last, "Integer range starts and ends on the same number, please check", 3)
+				}
+			}
+
+			for _, marker := range []string{"files", "dirs", "all"} {
+				if strings.HasPrefix(word, marker+":") || strings.HasPrefix(word, "-:"+marker+":") {
+					replacement := getNodes(strings.Replace(word, marker+":", "", 1), path, marker)
+					newtext = strings.Replace(newtext, word, replacement, 1)
+				}
+			}
+			capturing = -1
+		} else if capturing > -1 && n >= capturing {
+			word += string(char)
+		}
+		if char == ',' && n > 0 && !escaped {
+			capturing = n
+			word = ""
+			expanded = ""
+		}
+	}
+	return newtext
 }
 
 // generateCommands generates the list of commands which will be executed
@@ -240,6 +357,9 @@ func generateCommands(cmdStr string, curTerms map[string]string, curMap int, num
 	return output
 }
 
+// runCommands triggers the commands which have been generated
+// and does a bunch of other stuff that really has no business
+// being in this function but hey, time is in short supply
 func runCommands(commands []string) int {
 	var retcode int
 	var cmd *exec.Cmd
@@ -251,7 +371,7 @@ func runCommands(commands []string) int {
 		t, err := shellquote.Split(command)
 		errIf(err)
 		if dryRun {
-			//null tokens were presumably once quotes, doubles are just a guess
+			//null tokens were presumably once quotes
 			for i := range t {
 				if t[i] == "" {
 					t[i] = "\"\""
@@ -264,7 +384,7 @@ func runCommands(commands []string) int {
 			} else if len(t) == 1 {
 				cmd = exec.Command(t[0])
 			} else {
-				showHelp()
+				showHelp(true)
 				os.Exit(0)
 			}
 			cmd.Stdout, cmd.Stdin, cmd.Stderr = os.Stdout, os.Stdin, os.Stderr
@@ -275,6 +395,7 @@ func runCommands(commands []string) int {
 	return retcode
 }
 
+// checkFlags checks if the first token is a flag and does the needful
 func checkFlags() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -282,7 +403,7 @@ func checkFlags() {
 			fmt.Println(version)
 			os.Exit(0)
 		case "-h", "--help":
-			showHelp()
+			showHelp(true)
 			os.Exit(0)
 		case "-t", "--test":
 			dryRun = true
@@ -321,6 +442,60 @@ func parseCommand(cmd string) (string, map[string]string) {
 		}
 	}
 	return cmd, r
+}
+
+func getNodes(directivePath string, externalPath string, kind string) string {
+	var nodes []string
+	var prefix string
+	var tainted bool
+	var rel bool
+
+	if isHidden(directivePath) {
+		directivePath = directivePath[2:]
+		prefix = hider
+	}
+	if !strings.HasPrefix(directivePath, "/") {
+		rel = true
+	}
+	errOn(!rel && externalPath != "", "fatal: don't mix and match importing paths from outside @@ blocks and absolute paths inside them, no bueno (map: "+directivePath+")", 5)
+
+	if hasGlobs(externalPath) {
+		tainted = true
+	}
+	directivePath = unescapeGlobChars(directivePath)
+	fullPath := directivePath
+	if externalPath != "" {
+		if !strings.HasSuffix(externalPath, "/") || isEscaped(externalPath, len(externalPath)-1) {
+			fullPath = externalPath + "/" + directivePath
+		} else {
+			fullPath = externalPath + directivePath
+		}
+	}
+	contents, err := filepath.Glob(fullPath)
+	errIf(err)
+	errOn(len(contents) == 0, "No nodes matched ("+kind+": "+directivePath+")", 3)
+	for _, f := range contents {
+		nodeStat, err := os.Stat(f)
+		errIf(err)
+		if tainted {
+			f = strings.Replace(f, " ", "\\ ", -1)
+		} else {
+			if filepath.Dir(f) != "." && rel {
+				s, err := filepath.Rel(externalPath, f)
+				errIf(err)
+				f = s
+			} else {
+				f = strings.Replace(filepath.Base(f), " ", "\\ ", -1)
+			}
+		}
+		switch mode := nodeStat.Mode(); {
+		case mode.IsDir() && (kind == "all" || kind == "dirs"):
+			nodes = append(nodes, f)
+		case mode.IsRegular() && (kind == "all" || kind == "files"):
+			nodes = append(nodes, f)
+		}
+	}
+	return prefix + strings.Join(nodes, ",")
 }
 
 func main() {
