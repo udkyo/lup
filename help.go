@@ -41,6 +41,22 @@ You can reference previous blocks in a command by including a standalone integer
 
   lup @-:1..5@ echo "Hello @1@"
 
+Reading Files
+-------------
+
+Text files can be used in @ blocks and injected line by line. For example, given a file containing a list of servers:
+
+  Fry
+  Leela
+  Bender
+
+  We can perform an action on each line by using @lines:...@
+
+  $ lup -t echo @lines:/tmp/foo/servers.txt@
+  echo Fry
+  echo Leela
+  echo Bender
+
 Filesystem
 ----------
 A number of directives are available for iterating through files/directories/everything in a specific path. These are 'files,' 'dirs,' and 'all' respectively.
