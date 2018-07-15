@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -153,6 +154,31 @@ var unwrapTests = []struct {
 	{"@all:/tmp/luptests/unwrap/*@", "@0,1,2,3,4,5,a@"},
 }
 
+var expandLinesTests = []struct {
+	s string // text
+	e string // expected
+}{
+	{"echo @lines:/tmp/luptests/names.txt@", "echo @f\\@rnsworth,fry,lee\\,la,zoid berg,bender,hermes@"}, {"echo @-:lines:/tmp/luptests/names.txt@", "echo @-:f\\@rnsworth,fry,lee\\,la,zoid berg,bender,hermes@"},
+}
+
+var expandRangesTests = []struct {
+	s string // text
+	e string // expected
+}{
+	{"echo @1..5@", "echo @1,2,3,4,5@"},
+	{"echo @5..1@", "echo @5,4,3,2,1@"},
+	{"echo @-:1..5@", "echo @-:1,2,3,4,5@"},
+	{"echo @-:5..1@", "echo @-:5,4,3,2,1@"},
+}
+
+var expandPathsTests = []struct {
+	s string // text
+	e string // expected
+}{
+	{"echo @files:/tmp/luptests/expandpaths/*@", "echo @0,1,2,3,4,5@"},
+	{"echo @-:dirs:/tmp/luptests/expandpaths/*@", "echo @-:a@"},
+}
+
 func makeNodes(parent string) {
 	path := "/tmp/luptests/" + parent
 	if _, err := os.Stat(path); err == nil {
@@ -177,6 +203,39 @@ func makeNodes(parent string) {
 			}
 		}
 		makeNodes(parent)
+	}
+}
+
+func TestExpandLines(t *testing.T) {
+	d1 := []byte("f@rnsworth\nfry\nlee,la\nzoid berg\nbender\nhermes")
+	err := ioutil.WriteFile("/tmp/luptests/names.txt", d1, 0700)
+	if err != nil {
+		t.Fatalf("Failed to write names.txt in TestExpandLines")
+	}
+	for _, x := range expandLinesTests {
+		result := expandLines(x.s)
+		if x.e != result {
+			t.Errorf("Failed expandLines - expected: %s, got %s", x.e, result)
+		}
+	}
+}
+
+func TestExpandRanges(t *testing.T) {
+	for _, x := range expandRangesTests {
+		result := expandRanges(x.s)
+		if x.e != result {
+			t.Errorf("Failed expandRanges - expected: %s, got %s", x.e, result)
+		}
+	}
+}
+
+func TestExpandPaths(t *testing.T) {
+	makeNodes("expandpaths")
+	for _, x := range expandPathsTests {
+		result := expandPaths(x.s)
+		if x.e != result {
+			t.Errorf("Failed unwrap - expected: %s, got %s", x.e, result)
+		}
 	}
 }
 func TestUnwrap(t *testing.T) {

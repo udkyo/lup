@@ -1,6 +1,6 @@
 //go:generate go get github.com/udkyo/go-shellquote
 //go:generate go test
-//go:generate go build main.go
+//go:generate go build main.go expansions.go help.go
 //go:generate mv ./main /usr/local/bin/lup
 
 package main
@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,86 +31,6 @@ var (
 	hider        = "-:"
 	globChars    = []rune{'*', '?', '!', '{', '}'}
 )
-
-func showHelp() {
-	fmt.Println(`Usage: lup [OPTION] COMMANDLINE
-
-Run multiple similar commands expanding at-symbol encapsulated, comma-separated lists similarly to nested for loops.
-
-e.g:
-
-  lup @rm,nano@ foo_@1,2@
-
-Expands to and executes:
-
-  rm foo_1
-  rm foo_2
-  nano foo_1
-  nano foo_2
-
-If spaces are used in the @ group, the entire group must be encapsulated in quotes. If @ symbols are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes if intended as literals.
-
-Iterating
----------
-To iterate through a range of numbers, use @i..j@ where i and j are integer values. Lup will happily increment or decrement as required, for example.
-
-  lup echo "@9..0@ @0..9@"
-
-Hiding
-------
-To "hide" a group, you can prefix its contents with -: the following will echo iterate through the hidden block echoing "Hello" 5 times, but otherwise do nothing with its values
-
-  lup @-:1..5@ echo "Hello"
-
-Backrefs
---------
-You can reference previous blocks in a command by including a standalone integer reference to it in an @ block. We can rework the previous example to echo the contents of the hidden block after the word "Hello" (note: backref values begin at 1 and are a copy of the specific value used in that group on any given line, they are not iterated through as independent loops)
-
-  lup @-:1..5@ echo "Hello @1@"
-
-Filesystem
-----------
-A number of directives are available for iterating through files/directories/everything in a specific path. These are 'files,' 'dirs,' and 'all' respectively.
-
-When provided with a relative path, the relative path and file/dir names will be used, e.g.:
-
-  $ lup echo @files:foo/*@
-  foo/bar.txt
-  foo/baz.sh
-
-When provided with an absolute path (whether explicit or expanded), only the file/directory name will be used:
-
-  $ lup echo @files:$(pwd)/foo/*@
-  bar.txt
-  baz.sh
-
-When a path is provided immediately before an @ group containing a files/dirs/all directive, the path is inherited:
-
-  $ lup echo $(pwd)/foo/@files:*@
-  /tmp/foo/bar.txt
-  /tmp/foo/baz.sh
-
-It is important to note that only the filename is being returned again - the full paths are shown because the rest of the path exists outside the @ group, we can prove this with a backref.
-
-  $ lup echo "$(pwd)/foo/@files:*@ (@1@)"
-  /tmp/foo/bar.txt (bar.txt)
-  /tmp/foo/baz.sh (baz.sh)
-
-If, however, a path is provided immediately prior to an @ group containing a files/dirs/all directive which contains a wildcard, the *entire path* will be returned.
-
-  $ lup echo "$(pwd)/f*o/@files:*@ (@1@)"
-  /tmp/foo/bar.txt (/tmp/foo/bar.txt)
-  /tmp/foo/baz.sh (/tmp/foo/baz.sh)
-
-More detail on usage is available at https://github.com/udkyo/lup
-
-Options:
-
-  -h, --help     Show this help message and exit
-  -V, --version  Show version information and exit
-  -t, --test     Show commands, but do not execute them`)
-	os.Exit(0)
-}
 
 func errIf(err error) {
 	if err != nil {
@@ -284,93 +203,7 @@ func backref(cmdStr string, mapName string, curTerms map[string]string, curMap i
 }
 
 func unwrap(text string) string {
-	// needs broken up, this does range and file expansion
-	expanded := ""
-	capturing := -1
-	word := ""
-	newtext := text
-	pathStart := -1
-	path := ""
-
-	for n, char := range text {
-		escaped := isEscaped(text, n)
-
-		if capturing == -1 {
-			if pathStart == -1 && char == '/' && !escaped {
-				pathStart = n
-			}
-		}
-		if char == delimiter && !escaped {
-			if pathStart > -1 {
-				path = text[pathStart:n]
-			}
-			pathStart = -1
-		}
-
-		if (capturing == -1 && char == delimiter) && !escaped {
-			capturing = n + 1
-			expanded = ""
-			word = ""
-		} else if char == delimiter || char == ',' && capturing > -1 && !escaped {
-			if hasGlobs(path) {
-				newtext = strings.Replace(newtext, path, "", 1)
-			}
-
-			start := 0
-			prefix := ""
-			if isHidden(word) {
-				start = 2
-				prefix = "-:"
-			}
-
-			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)`)
-			res := re.FindAllStringSubmatch(word[start:], -1)
-
-			for m, x := range res {
-				if len(x) == 0 {
-					break
-				}
-				first, _ := strconv.Atoi(res[m][1])
-				last, _ := strconv.Atoi(res[m][2])
-
-				if last < first {
-					for i := first; i >= last; i-- {
-						expanded += strconv.Itoa(i)
-						if i > last {
-							expanded += ","
-						}
-					}
-					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
-				} else if first < last {
-					for i := first; i <= last; i++ {
-						expanded += strconv.Itoa(i)
-						if i < last {
-							expanded += ","
-						}
-					}
-					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
-				} else {
-					errOn(first == last, "Integer range starts and ends on the same number, please check", 3)
-				}
-			}
-
-			for _, marker := range []string{"files", "dirs", "all"} {
-				if strings.HasPrefix(word, marker+":") || strings.HasPrefix(word, "-:"+marker+":") {
-					replacement := getNodes(strings.Replace(word, marker+":", "", 1), path, marker)
-					newtext = strings.Replace(newtext, word, replacement, 1)
-				}
-			}
-			capturing = -1
-		} else if capturing > -1 && n >= capturing {
-			word += string(char)
-		}
-		if char == ',' && n > 0 && !escaped {
-			capturing = n
-			word = ""
-			expanded = ""
-		}
-	}
-	return newtext
+	return expandLines(expandPaths(expandRanges(text)))
 }
 
 // generateCommands generates the list of commands which will be executed
@@ -407,9 +240,6 @@ func generateCommands(cmdStr string, curTerms map[string]string, curMap int, num
 	return output
 }
 
-// runCommands triggers the commands which have been generated
-// and does a bunch of other stuff that really has no business
-// being in this function but hey, time is in short supply
 func runCommands(commands []string) int {
 	var retcode int
 	var cmd *exec.Cmd
@@ -421,7 +251,7 @@ func runCommands(commands []string) int {
 		t, err := shellquote.Split(command)
 		errIf(err)
 		if dryRun {
-			//null tokens were presumably once quotes
+			//null tokens were presumably once quotes, doubles are just a guess
 			for i := range t {
 				if t[i] == "" {
 					t[i] = "\"\""
@@ -445,7 +275,6 @@ func runCommands(commands []string) int {
 	return retcode
 }
 
-// checkFlags checks if the first token is a flag and does the needful
 func checkFlags() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -492,60 +321,6 @@ func parseCommand(cmd string) (string, map[string]string) {
 		}
 	}
 	return cmd, r
-}
-
-func getNodes(directivePath string, externalPath string, kind string) string {
-	var nodes []string
-	var prefix string
-	var tainted bool
-	var rel bool
-
-	if isHidden(directivePath) {
-		directivePath = directivePath[2:]
-		prefix = hider
-	}
-	if !strings.HasPrefix(directivePath, "/") {
-		rel = true
-	}
-	errOn(!rel && externalPath != "", "fatal: don't mix and match importing paths from outside @@ blocks and absolute paths inside them, no bueno (map: "+directivePath+")", 5)
-
-	if hasGlobs(externalPath) {
-		tainted = true
-	}
-	directivePath = unescapeGlobChars(directivePath)
-	fullPath := directivePath
-	if externalPath != "" {
-		if !strings.HasSuffix(externalPath, "/") || isEscaped(externalPath, len(externalPath)-1) {
-			fullPath = externalPath + "/" + directivePath
-		} else {
-			fullPath = externalPath + directivePath
-		}
-	}
-	contents, err := filepath.Glob(fullPath)
-	errIf(err)
-	errOn(len(contents) == 0, "No nodes matched ("+kind+": "+directivePath+")", 3)
-	for _, f := range contents {
-		nodeStat, err := os.Stat(f)
-		errIf(err)
-		if tainted {
-			f = strings.Replace(f, " ", "\\ ", -1)
-		} else {
-			if filepath.Dir(f) != "." && rel {
-				s, err := filepath.Rel(externalPath, f)
-				errIf(err)
-				f = s
-			} else {
-				f = strings.Replace(filepath.Base(f), " ", "\\ ", -1)
-			}
-		}
-		switch mode := nodeStat.Mode(); {
-		case mode.IsDir() && (kind == "all" || kind == "dirs"):
-			nodes = append(nodes, f)
-		case mode.IsRegular() && (kind == "all" || kind == "files"):
-			nodes = append(nodes, f)
-		}
-	}
-	return prefix + strings.Join(nodes, ",")
 }
 
 func main() {
