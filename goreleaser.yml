@@ -15,5 +15,10 @@ brew:
     name: udkyo
     email: discohammock@udk.io
   folder: Formula
+  homepage: "https://github.com/udkyo/lup/"
   description: "Loopy command execution."
   skip_upload: false
+  test: |
+    system "#{bin}/lup -V"
+  install: |
+    bin.install "lup"
