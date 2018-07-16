@@ -39,11 +39,17 @@ Each command is run in sequence. In the event any command fails, lup will contin
 
 ## Installing
 
-Grab a release from the releases page, extract the binary, copy it to somewhere in your path (/usr/local/bin or /usr/bin are probably good choices) and set it to executable.
-
-Something like this will do it if you have write access to /usr/local/bin
-
 #### Mac
+
+Brew users on mac can install with:
+
+```
+brew tap udkyo/lup
+brew install lup
+```
+
+Or manually:
+
 ```
 curl -sL https://github.com/udkyo/lup/releases/download/v0.3.2/lup_0.3.2_darwin_amd64.tar.gz \
   | tar xz lup \
@@ -52,6 +58,9 @@ mv lup /usr/local/bin
 ```
 
 #### Linux
+
+Download and extract the latest release, set the file "lup" to executable and move it to a pathed directory. e.g:
+
 ```
 curl -sL https://github.com/udkyo/lup/releases/download/v0.3.2/lup_0.3.2_linux_amd64.tar.gz \
   | tar xz lup \
