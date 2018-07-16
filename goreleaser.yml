@@ -5,3 +5,15 @@ builds:
       - linux
     goarch:
       - amd64
+
+brew:
+  name: lup
+  github:
+    owner: udkyo
+    name: homebrew-lup
+  commit_author:
+    name: udkyo
+    email: discohammock@udk.io
+  folder: Formula
+  description: "Loopy command execution."
+  skip_upload: false
