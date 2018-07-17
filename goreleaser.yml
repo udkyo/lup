@@ -5,3 +5,20 @@ builds:
       - linux
     goarch:
       - amd64
+
+brew:
+  name: lup
+  github:
+    owner: udkyo
+    name: homebrew-lup
+  commit_author:
+    name: udkyo
+    email: discohammock@udk.io
+  folder: Formula
+  homepage: "https://github.com/udkyo/lup/"
+  description: "Loopy command execution."
+  skip_upload: false
+  test: |
+    system "#{bin}/lup -V"
+  install: |
+    bin.install "lup"
