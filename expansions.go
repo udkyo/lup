@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,21 +11,118 @@ import (
 	"strings"
 )
 
-func getNodes(directivePath string, externalPath string, kind string) string {
-	// used by expandPaths
+func backref(s string, curTerms []string) string {
+	if regexp.MustCompile(`^[0-9]+$`).MatchString(s) {
+		n, _ := strconv.Atoi(s)
+		if n > len(curTerms) {
+			fmt.Fprintf(os.Stderr, "Invalid backref, %s is greater than the number of groups.\n", s)
+			os.Exit(4)
+		} else {
+			s = curTerms[n-1]
+		}
+	}
+	return s
+}
+
+func expand(s string, externalPath string, inSingles bool, inDoubles bool) (r []string) {
+	r = expandPaths(expandLines(expandRanges([]string{s})), externalPath)
+	for i := range r {
+		if !inSingles && !inDoubles {
+			r[i] = strings.Replace(r[i], "'", "\\'", -1)
+			r[i] = strings.Replace(r[i], "\"", "\\\"", -1)
+		}
+		if inSingles {
+			r[i] = strings.Replace(r[i], "'", "'\\''", -1)
+		}
+	}
+	return
+}
+
+func expandLines(words []string) (expanded []string) {
+	for _, word := range words {
+		if strings.HasPrefix(word, "lines:") {
+			file, err := os.Open(word[6:])
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				st := scanner.Text()
+				expanded = append(expanded, addSlashes(st))
+			}
+			if err := scanner.Err(); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
+	if len(expanded) == 0 {
+		expanded = words
+	}
+	return
+}
+
+func expandRanges(words []string) (expanded []string) {
+	for _, word := range words {
+		re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)`)
+		res := re.FindAllStringSubmatch(word, -1)
+		for m, x := range res {
+			if len(x) == 0 {
+				break
+			}
+			first, _ := strconv.Atoi(res[m][1])
+			last, _ := strconv.Atoi(res[m][2])
+
+			if last < first {
+				for i := first; i >= last; i-- {
+					expanded = append(expanded, strconv.Itoa(i))
+				}
+			} else if first < last {
+				for i := first; i <= last; i++ {
+					expanded = append(expanded, strconv.Itoa(i))
+				}
+			} else {
+				if first == last {
+					fmt.Fprintf(os.Stderr, "Integer range starts and ends on the same number.")
+					os.Exit(6)
+				}
+			}
+		}
+	}
+	if len(expanded) == 0 {
+		expanded = words
+	}
+	return
+}
+
+func expandPaths(words []string, externalPath string) (s []string) {
+	var done bool
+	for _, word := range words {
+		for _, marker := range []string{"files", "dirs", "all"} {
+			if strings.HasPrefix(word, marker+":") {
+				s = append(s, getNodes(strings.Replace(word, marker+":", "", 1), externalPath, marker)...)
+				done = true
+			}
+		}
+	}
+	if !done {
+		s = words
+	}
+	return
+}
+
+func getNodes(directivePath string, externalPath string, kind string) (s []string) {
 	var nodes []string
-	var prefix string
 	var tainted bool
 	var rel bool
 
-	if isHidden(directivePath) {
-		directivePath = directivePath[2:]
-		prefix = hider
-	}
 	if !strings.HasPrefix(directivePath, "/") {
 		rel = true
 	}
-	errOn(!rel && externalPath != "", "fatal: don't mix and match importing paths from outside @@ blocks and absolute paths inside them, no bueno (map: "+directivePath+")", 5)
+	if !rel && externalPath != "" {
+		fmt.Fprintf(os.Stderr, "Can't mix and match immediately preceeding paths and group paths in files/dirs/all directives")
+		os.Exit(7)
+	}
 
 	if hasGlobs(externalPath) {
 		tainted = true
@@ -38,22 +136,33 @@ func getNodes(directivePath string, externalPath string, kind string) string {
 			fullPath = externalPath + directivePath
 		}
 	}
+	fullPath = unescapeGlobChars(fullPath)
 	contents, err := filepath.Glob(fullPath)
-	errIf(err)
-	errOn(len(contents) == 0, "No nodes matched ("+kind+": "+directivePath+")", 3)
+	if err != nil {
+		errOn(err, "Globbing error", 7)
+	}
+	if len(contents) == 0 {
+		fmt.Fprintf(os.Stderr, "No nodes matched (kind:"+kind+" / directivePath:"+directivePath+" / externalPath:"+externalPath+")")
+		os.Exit(8)
+	}
 	for _, f := range contents {
 		nodeStat, err := os.Stat(f)
-		errIf(err)
+		if err != nil {
+			errOn(err, "Couldn't stat", 9)
+		}
 		if tainted {
 			f = strings.Replace(f, " ", "\\ ", -1)
 		} else {
 			if filepath.Dir(f) != "." && rel {
 				s, err := filepath.Rel(externalPath, f)
-				errIf(err)
+				if err != nil {
+					errOn(err, "Path error", 10)
+				}
 				f = s
 			} else {
-				f = strings.Replace(filepath.Base(f), " ", "\\ ", -1)
+				f = filepath.Base(f)
 			}
+			f = strings.Replace(f, " ", "\\ ", -1)
 		}
 		switch mode := nodeStat.Mode(); {
 		case mode.IsDir() && (kind == "all" || kind == "dirs"):
@@ -62,164 +171,5 @@ func getNodes(directivePath string, externalPath string, kind string) string {
 			nodes = append(nodes, f)
 		}
 	}
-	return prefix + strings.Join(nodes, ",")
-}
-
-func expandRanges(text string) string {
-	expanded := ""
-	capturing := -1
-	word := ""
-	newtext := text
-	for n, char := range text {
-		escaped := isEscaped(text, n)
-
-		if (capturing == -1 && char == delimiter) && !escaped {
-			capturing = n + 1
-			expanded = ""
-			word = ""
-		} else if char == delimiter || char == ',' && capturing > -1 && !escaped {
-
-			start := 0
-			prefix := ""
-			if isHidden(word) {
-				start = 2
-				prefix = "-:"
-			}
-
-			re := regexp.MustCompile(`^([0-9]+)\.\.([0-9]+)`)
-			res := re.FindAllStringSubmatch(word[start:], -1)
-
-			for m, x := range res {
-				if len(x) == 0 {
-					break
-				}
-				first, _ := strconv.Atoi(res[m][1])
-				last, _ := strconv.Atoi(res[m][2])
-
-				if last < first {
-					for i := first; i >= last; i-- {
-						expanded += strconv.Itoa(i)
-						if i > last {
-							expanded += ","
-						}
-					}
-					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
-				} else if first < last {
-					for i := first; i <= last; i++ {
-						expanded += strconv.Itoa(i)
-						if i < last {
-							expanded += ","
-						}
-					}
-					newtext = strings.Replace(newtext, word, prefix+expanded, 1)
-				} else {
-					errOn(first == last, "Integer range starts and ends on the same number, please check", 3)
-				}
-			}
-			capturing = -1
-		} else if capturing > -1 && n >= capturing {
-			word += string(char)
-		}
-		if char == ',' && n > 0 && !escaped {
-			capturing = n
-			word = ""
-			expanded = ""
-		}
-	}
-	return newtext
-}
-
-func expandLines(text string) string {
-	capturing := -1
-	word := ""
-	newtext := text
-	var lines []string
-	start := -1
-	prefix := ""
-
-	for n, char := range text {
-		escaped := isEscaped(text, n)
-		if (capturing == -1 && char == delimiter) && !escaped {
-			capturing = n + 1
-			word = ""
-		} else if char == delimiter || char == ',' && capturing > -1 && !escaped {
-			if strings.HasPrefix(word, "lines:") || strings.HasPrefix(word, "-:lines:") {
-				if strings.HasPrefix(word, "-:") {
-					start = 8
-					prefix = "-:"
-				} else {
-					start = 6
-				}
-				file, err := os.Open(word[start:])
-				if err != nil {
-					log.Fatal(err)
-				}
-				defer file.Close()
-				scanner := bufio.NewScanner(file)
-				for scanner.Scan() {
-					lines = append(lines, addSlashes(scanner.Text()))
-				}
-				if err := scanner.Err(); err != nil {
-					log.Fatal(err)
-				}
-				newtext = strings.Replace(newtext, word, prefix+strings.Join(lines, ","), 1)
-			}
-			capturing = -1
-		} else if capturing > -1 && n >= capturing {
-			word += string(char)
-		}
-		if char == ',' && n > 0 && !escaped {
-			capturing = n
-			word = ""
-		}
-	}
-	return newtext
-}
-
-func expandPaths(text string) string {
-	capturing := -1
-	word := ""
-	newtext := text
-	pathStart := -1
-	path := ""
-
-	for n, char := range text {
-		escaped := isEscaped(text, n)
-
-		if capturing == -1 {
-			if pathStart == -1 && char == '/' && !escaped {
-				pathStart = n
-			}
-		}
-		if char == delimiter && !escaped {
-			if pathStart > -1 {
-				path = text[pathStart:n]
-			}
-			pathStart = -1
-		}
-
-		if (capturing == -1 && char == delimiter) && !escaped {
-			capturing = n + 1
-			word = ""
-		} else if char == delimiter || char == ',' && capturing > -1 && !escaped {
-			if hasGlobs(path) {
-				newtext = strings.Replace(newtext, path, "", 1)
-			}
-
-			for _, marker := range []string{"files", "dirs", "all"} {
-				if strings.HasPrefix(word, marker+":") || strings.HasPrefix(word, "-:"+marker+":") {
-					replacement := getNodes(strings.Replace(word, marker+":", "", 1), path, marker)
-					newtext = strings.Replace(newtext, word, replacement, 1)
-				}
-			}
-			capturing = -1
-		} else if capturing > -1 && n >= capturing {
-			word += string(char)
-		}
-		if char == ',' && n > 0 && !escaped {
-			capturing = n
-			word = ""
-		}
-	}
-	return newtext
+	return nodes
 }
