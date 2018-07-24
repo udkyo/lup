@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+
+	ps "github.com/mitchellh/go-ps"
 )
 
 func showHelp() {
@@ -21,13 +24,13 @@ Expands to and executes:
   nano foo_1
   nano foo_2
 
-If @ symbols in a command or commas (within an @ group) are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes if intended as literals.
+If @ symbols in a command or commas (within an @ group) are to be used as literals they should be escaped with backslashes, as should commas which are to be treated as literals within @ groups. When not enclosed in quotes, @s should be escaped with double-backslashes.
 
 Iterating
 ---------
-To iterate through a range of numbers, use @i..j@ where i and j are integer values. Lup will happily increment or decrement as required, for example.
+To iterate through a range of numbers, use @i..j@ where i and j are integer values. Lup will increment or decrement as required, for example.
 
-  lup echo "@9..0@ @0..9@"
+  lup echo "@9..0@@0..9@"
 
 Hiding
 ------
@@ -59,7 +62,7 @@ Text files can be used in @ blocks and injected line by line. For example, given
 
 Filesystem
 ----------
-A number of directives are available for iterating through files/directories/everything in a specific path. These are 'files,' 'dirs,' and 'all' respectively.
+Directives are available for iterating through files/directories/everything in a specific path. These are 'files,' 'dirs,' and 'all' respectively.
 
 When provided with a relative path, the relative path and file/dir names will be used, e.g.:
 
@@ -98,5 +101,34 @@ Options:
   -h, --help     Show this help message and exit
   -V, --version  Show version information and exit
   -t, --test     Show commands, but do not execute them`)
-	os.Exit(0)
+	if !testrun {
+		os.Exit(0)
+	}
+}
+
+func detectShell() string {
+	p, err := ps.FindProcess(os.Getppid())
+	if err != nil {
+		errOn(err, "Couldn't detect shell", 14)
+	}
+	return (p.Executable())
+}
+
+func getStdin() string {
+	inp := ""
+	file := os.Stdin
+	fi, err := file.Stat()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "file.Stat()", err)
+		os.Exit(3)
+	}
+	size := fi.Size()
+	if size > 0 {
+		data, _ := ioutil.ReadAll(os.Stdin)
+		inp = string(data)
+		if len(inp) > 0 {
+			inp = inp[:len(string(data))-1]
+		}
+	}
+	return inp
 }

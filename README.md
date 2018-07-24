@@ -1,17 +1,17 @@
 ## Lup - loopy command execution
 
-[![Lup demo](https://raw.githubusercontent.com/udkyo/assets/master/lup2.gif)](https://asciinema.org/a/190728)
+[![Lup demo](https://raw.githubusercontent.com/udkyo/assets/master/lup2.gif)](https://asciinema.org/a/191914)
 
 Lup runs whatever text you pass it on the command line as multiple separate commands, expanding the contents of @ encapsulated groups and directives vertically, in a similar manner to nested for loops.
 
-e.g. `lup ping -c 1 @google,amazon@.@com,net@` is similar to:
+e.g. `lup ping -c1 @google,amazon@.@com,net@` is similar to:
 
 ```
 for site in google amazon
 do
   for suffix in com net
   do 
-    ping -c 1 $site.$suffix
+    ping -c1 $site.$suffix
   done
 done
 ```
@@ -51,7 +51,7 @@ brew install lup
 Or manually:
 
 ```
-curl -sL https://github.com/udkyo/lup/releases/download/v0.3.2/lup_0.3.2_darwin_amd64.tar.gz \
+curl -sL https://github.com/udkyo/lup/releases/download/v0.4.0/lup_0.4.0_darwin_amd64.tar.gz \
   | tar xz lup \
   && chmod +x lup
 mv lup /usr/local/bin
@@ -62,7 +62,7 @@ mv lup /usr/local/bin
 Download and extract the latest release, set the file "lup" to executable and move it to a pathed directory. e.g:
 
 ```
-curl -sL https://github.com/udkyo/lup/releases/download/v0.3.2/lup_0.3.2_linux_amd64.tar.gz \
+curl -sL https://github.com/udkyo/lup/releases/download/v0.4.0/lup_0.4.0_linux_amd64.tar.gz \
   | tar xz lup \
   && chmod +x lup ;
 mv lup /usr/local/bin
@@ -74,7 +74,7 @@ mv lup /usr/local/bin
 
 You can trigger a dry run by specifying -t as a flag, this will show the commands which lup intends to run without actually triggering them.
 
-Note: lup's flags must always be the first thing on the command line after the word 'lup' - everything else gets treated as the command lup should expand.
+Note: lup's flags must always be the first things on the command line after the word 'lup' - everything else gets treated as the command lup should expand.
 
 Another note: Doing a dry run first is always a good idea, at least until you're comfortable with how lup works.
 
@@ -84,7 +84,7 @@ Another note: Doing a dry run first is always a good idea, at least until you're
 
 `lup echo '@Hello,Bonjour,Yo\, wud up@' user\@domain`
 
-Whenever you escape commas or at symbols inside a group, the group should be in quotes.
+When escaping outside quotes, you will need to use double-slashes
 
 ### Ranges
 
@@ -149,17 +149,17 @@ Bender
 We can perform an action on each line by using @lines:...@
 
 ```
-$ lup -t echo @lines:/tmp/foo/servers.txt@
-echo Fry
-echo Leela
-echo Bender
+$ lup echo @lines:/tmp/foo/servers.txt@
+Fry
+Leela
+Bender
 ```
 
 ### File Globbing
 
-You can expand paths using standard globbing patterns using colon suffixed keywords. However its behaviour varies if a path immediately precedes the group.
+You can expand paths using standard globbing patterns with colon suffixed keywords. However its behaviour varies if a path immediately precedes the group.
 
-Note: Path detection is under active development and using lup -t before running your commands is always a good idea. Paths outside the @ blocks are matched by simply walking through the command from left to right, checking for slashes and allowing paths to expand out from there, so *anything* that looks like a path which appears immediately before a block will currently be treated as one. e.g. `this/that@files:*@` will try to retrieve a list of files in the directory `/that`
+Note: Paths outside the @ blocks are matched by simply walking through the command from left to right, checking for slashes and allowing paths to expand out from there, so *anything* that looks like a path which appears immediately before a block will currently be treated as one. e.g. `this/that@files:*@` will try to retrieve a list of files in the directory `/that`.
 
 #### Basic directives:
 
@@ -222,7 +222,7 @@ When piping a command's output to lup, that output will be captured and piped to
 However, when piping *from* lup, the output of each command lup runs will be merged and you'll probably end up having a pretty bad time. In general, you can encapsulate the whole command in a string and call a new shell with lup for each command it'll trigger:
 
 ```
-lup sh -c "cat /opt/ssh/keys/training@1..10@.pub | ssh admin\\@train@1,2,3,4,5@.test 'cat >> ~training@1@/.ssh/authorized_keys'"
+lup sh -c "cat /opt/ssh/keys/training@1..10@.pub | ssh admin\@train@1,2,3,4,5@.test 'cat >> ~training@1@/.ssh/authorized_keys'"
 ```
 
 Or, you can just not use lup on the left hand side of your pipes (unless you really want all its output to be piped through in one go)
@@ -232,5 +232,5 @@ Or, you can just not use lup on the left hand side of your pipes (unless you rea
 - Tilde completion immediately prior to a @ symbol is a no go. Instead you'll need to use full paths, $(pwd), $OLDPWD etc.
 - Nesting isn't supported - if you run `lup nslookup @microsoft.@com,net,org@,google.com@` lup sees two groups - @microsoft.@ and @,google.com@ with the string com,net,org sandwiched in between
 - at symbols make commands look cluttered - unfortunately all the more visually sensible choices with opening/closing pairs (parentheses, brackets, braces, chevrons) have built-in uses, so @ seems like the least idiotic character to use, however I'm open to suggestions
-- lup triggers binaries, it doesn't operate on shell built-ins like set or export, so unfortunately you can't do things like `lup export @http,https@_proxy=http://foo/`
+- lup triggers binaries, it doesn't operate on shell built-ins like set or export, so unfortunately you can't directly do actions such `lup export http@,s@_proxy=http://foo/`, however you can circumvent this using builtin, e.g. `lup builtin export http@,s@_proxy="http://foo/"`
 - command substitution happens up front before lup gets to work, bear that in mind if you're using $() or backticks inside a command that's being triggered by lup and considering putting @ blocks in it
